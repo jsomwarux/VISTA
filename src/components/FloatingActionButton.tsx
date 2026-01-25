@@ -51,7 +51,6 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 28,
-    fontWeight: '300',
     color: colors.background,
     marginTop: -2,
   },

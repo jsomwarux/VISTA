@@ -103,3 +103,11 @@ export interface TMDBSearchResult {
   total_pages: number;
   total_results: number;
 }
+
+export interface TasteMatchResult {
+  score: number | null;
+  overlapCount: number;
+  status: 'calculated' | 'insufficient_overlap' | 'loading' | 'error';
+  message?: string;
+  avgDifference?: number;
+}

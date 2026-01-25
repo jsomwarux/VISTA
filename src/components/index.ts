@@ -19,3 +19,4 @@ export { RatingDistribution } from './RatingDistribution';
 export { SkeletonLoader, MoviePosterSkeleton, RatingCardSkeleton, ProfileHeaderSkeleton, MovieDetailSkeleton } from './SkeletonLoader';
 export { AnimatedPressable } from './AnimatedPressable';
 export { AnimatedHeart } from './AnimatedHeart';
+export { TasteMatchBadge } from './TasteMatchBadge';

@@ -1,8 +1,7 @@
 import { Tabs, useRouter } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, shadows } from '../../src/constants/theme';
+import { colors } from '../../src/constants/theme';
 import { FloatingActionButton } from '../../src/components';
 
 type IconName = 'person' | 'person-outline' | 'people' | 'people-outline' | 'compass' | 'compass-outline';
@@ -36,36 +35,17 @@ export default function TabLayout() {
         headerStyle: {
           backgroundColor: colors.background,
         },
-        headerTitleStyle: {
-          fontWeight: '700',
-          letterSpacing: 2,
-          color: colors.text,
-        },
         headerTintColor: colors.text,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           position: 'absolute',
-          backgroundColor: 'rgba(21, 21, 24, 0.85)',
+          backgroundColor: 'rgba(21, 21, 24, 0.95)',
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
           height: 85,
           paddingTop: 8,
-          ...shadows.lg,
         },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 4,
-        },
-        tabBarBackground: () => (
-          <BlurView
-            intensity={80}
-            tint="dark"
-            style={StyleSheet.absoluteFill}
-          />
-        ),
-        lazy: false,
       }}
     >
       <Tabs.Screen

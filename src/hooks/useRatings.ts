@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Rating, TasteStats } from '../types';
+import { Rating, TasteStats, TasteMatchResult } from '../types';
 import { getMovieDetails, getGenreName } from '../lib/tmdb';
 
 export function useRatings() {
@@ -409,6 +409,77 @@ export function useRatings() {
     }
   };
 
+  const getTasteMatch = async (
+    currentUserId: string,
+    otherUserId: string
+  ): Promise<TasteMatchResult> => {
+    try {
+      // Fetch both users' ratings in parallel
+      const [currentUserRatings, otherUserRatings] = await Promise.all([
+        supabase
+          .from('ratings')
+          .select('movie_id, score')
+          .eq('user_id', currentUserId),
+        supabase
+          .from('ratings')
+          .select('movie_id, score')
+          .eq('user_id', otherUserId),
+      ]);
+
+      if (currentUserRatings.error || otherUserRatings.error) {
+        return { score: null, overlapCount: 0, status: 'error' };
+      }
+
+      // Create maps for O(1) lookup
+      const currentUserMap = new Map<number, number>(
+        currentUserRatings.data?.map(r => [r.movie_id, r.score]) || []
+      );
+      const otherUserMap = new Map<number, number>(
+        otherUserRatings.data?.map(r => [r.movie_id, r.score]) || []
+      );
+
+      // Find overlapping movies
+      const overlappingMovieIds = [...currentUserMap.keys()].filter(
+        movieId => otherUserMap.has(movieId)
+      );
+
+      const overlapCount = overlappingMovieIds.length;
+
+      // Minimum 3 movies for meaningful comparison
+      if (overlapCount < 3) {
+        return {
+          score: null,
+          overlapCount,
+          status: 'insufficient_overlap',
+          message: overlapCount === 0
+            ? 'No movies in common yet'
+            : `Rate ${3 - overlapCount} more shared film${3 - overlapCount !== 1 ? 's' : ''}`,
+        };
+      }
+
+      // Calculate Mean Absolute Error
+      let totalDifference = 0;
+      for (const movieId of overlappingMovieIds) {
+        totalDifference += Math.abs(
+          currentUserMap.get(movieId)! - otherUserMap.get(movieId)!
+        );
+      }
+
+      const avgDifference = totalDifference / overlapCount;
+      const matchPercentage = Math.round(Math.max(0, 100 - avgDifference * 2));
+
+      return {
+        score: matchPercentage,
+        overlapCount,
+        status: 'calculated',
+        avgDifference: Math.round(avgDifference),
+      };
+    } catch (error) {
+      console.error('Error calculating taste match:', error);
+      return { score: null, overlapCount: 0, status: 'error' };
+    }
+  };
+
   return {
     loading,
     createRating,
@@ -420,5 +491,6 @@ export function useRatings() {
     getMovieRatings,
     getMovieAverageScore,
     getUserTasteStats,
+    getTasteMatch,
   };
 }

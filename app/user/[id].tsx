@@ -31,8 +31,9 @@ import {
   SegmentedControl,
   GenrePill,
   RatingDistribution,
+  TasteMatchBadge,
 } from '../../src/components';
-import { Rating, TasteStats, User } from '../../src/types';
+import { Rating, TasteStats, User, TasteMatchResult } from '../../src/types';
 import { getImageUrl } from '../../src/lib/tmdb';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -43,7 +44,7 @@ export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user: currentUser } = useAuth();
-  const { getUserRatings, getUserTasteStats } = useRatings();
+  const { getUserRatings, getUserTasteStats, getTasteMatch } = useRatings();
   const { getUserById, getFollowCounts, isFollowing, followUser, unfollowUser } = useSocial();
 
   const [user, setUser] = useState<User | null>(null);
@@ -54,6 +55,11 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [tasteMatch, setTasteMatch] = useState<TasteMatchResult>({
+    score: null,
+    overlapCount: 0,
+    status: 'loading',
+  });
 
   // Tab and filter state
   const [activeTab, setActiveTab] = useState<string>('ratings');
@@ -82,10 +88,14 @@ export default function UserProfileScreen() {
       setTasteStats(stats);
       setFollowCounts(counts);
 
-      // Check if current user follows this user
+      // Check if current user follows this user and calculate taste match
       if (currentUser && currentUser.id !== id) {
-        const { isFollowing: following } = await isFollowing(currentUser.id, id);
-        setIsFollowingUser(following);
+        const [followResult, matchResult] = await Promise.all([
+          isFollowing(currentUser.id, id),
+          getTasteMatch(currentUser.id, id),
+        ]);
+        setIsFollowingUser(followResult.isFollowing);
+        setTasteMatch(matchResult);
       }
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -333,9 +343,10 @@ export default function UserProfileScreen() {
             {tasteStats?.totalRated || 0} Rated  •  {tasteStats?.avgScore || '—'} Avg  •  {followCounts.followers} Followers
           </Text>
 
-          {/* Follow button for other users */}
+          {/* Follow button and Taste Match for other users */}
           {!isOwnProfile && currentUser && (
             <View style={styles.actionRow}>
+              <TasteMatchBadge result={tasteMatch} />
               <Pressable
                 style={[
                   styles.followButton,
