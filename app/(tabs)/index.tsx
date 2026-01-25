@@ -24,6 +24,7 @@ import {
 } from '../../src/constants/theme';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useRatings } from '../../src/hooks/useRatings';
+import { useSocial } from '../../src/hooks/useSocial';
 import {
   Avatar,
   MoviePoster,
@@ -43,9 +44,11 @@ export default function ProfileTab() {
   const router = useRouter();
   const { user, loading: authLoading, signOut } = useAuth();
   const { getUserRatings, getUserTasteStats } = useRatings();
+  const { getFollowCounts } = useSocial();
 
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [tasteStats, setTasteStats] = useState<TasteStats | null>(null);
+  const [followCounts, setFollowCounts] = useState<{ followers: number; following: number }>({ followers: 0, following: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('ratings');
   const [sortBy, setSortBy] = useState<'recent' | 'highest' | 'lowest'>('recent');
@@ -54,15 +57,17 @@ export default function ProfileTab() {
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [ratingsResult, statsResult] = await Promise.all([
+    const [ratingsResult, statsResult, countsResult] = await Promise.all([
       getUserRatings(user.id),
       getUserTasteStats(user.id),
+      getFollowCounts(user.id),
     ]);
 
     if (ratingsResult.data) {
       setRatings(ratingsResult.data);
     }
     setTasteStats(statsResult);
+    setFollowCounts(countsResult);
   }, [user]);
 
   useEffect(() => {
@@ -313,9 +318,19 @@ export default function ProfileTab() {
           <Text style={styles.username}>@{user.username}</Text>
 
           {/* Compact inline stats */}
-          <Text style={styles.inlineStats}>
-            {tasteStats?.totalRated || 0} Rated  •  {tasteStats?.avgScore || '—'} Avg  •  0 Following
-          </Text>
+          <View style={styles.inlineStatsRow}>
+            <Text style={styles.inlineStats}>
+              {tasteStats?.totalRated || 0} Rated  •  {tasteStats?.avgScore || '—'} Avg
+            </Text>
+            <Text style={styles.inlineStatsDot}>  •  </Text>
+            <Pressable onPress={() => router.push(`/followers?userId=${user.id}&tab=followers`)}>
+              <Text style={styles.inlineStatsLink}>{followCounts.followers} Followers</Text>
+            </Pressable>
+            <Text style={styles.inlineStatsDot}>  •  </Text>
+            <Pressable onPress={() => router.push(`/followers?userId=${user.id}&tab=following`)}>
+              <Text style={styles.inlineStatsLink}>{followCounts.following} Following</Text>
+            </Pressable>
+          </View>
 
           {/* Action buttons */}
           <View style={styles.actionRow}>
@@ -837,10 +852,24 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: spacing.xs,
   },
+  inlineStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
   inlineStats: {
     fontSize: 13,
     color: colors.textMuted,
-    marginTop: spacing.xs,
+  },
+  inlineStatsDot: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  inlineStatsLink: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   displayName: {
     fontSize: 20,

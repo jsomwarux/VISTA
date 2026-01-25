@@ -339,9 +339,19 @@ export default function UserProfileScreen() {
           <Text style={styles.username}>@{user.username}</Text>
 
           {/* Compact inline stats */}
-          <Text style={styles.inlineStats}>
-            {tasteStats?.totalRated || 0} Rated  •  {tasteStats?.avgScore || '—'} Avg  •  {followCounts.followers} Followers
-          </Text>
+          <View style={styles.inlineStatsRow}>
+            <Text style={styles.inlineStats}>
+              {tasteStats?.totalRated || 0} Rated  •  {tasteStats?.avgScore || '—'} Avg
+            </Text>
+            <Text style={styles.inlineStatsDot}>  •  </Text>
+            <Pressable onPress={() => router.push(`/followers?userId=${id}&tab=followers`)}>
+              <Text style={styles.inlineStatsLink}>{followCounts.followers} Followers</Text>
+            </Pressable>
+            <Text style={styles.inlineStatsDot}>  •  </Text>
+            <Pressable onPress={() => router.push(`/followers?userId=${id}&tab=following`)}>
+              <Text style={styles.inlineStatsLink}>{followCounts.following} Following</Text>
+            </Pressable>
+          </View>
 
           {/* Follow button and Taste Match for other users */}
           {!isOwnProfile && currentUser && (
@@ -816,10 +826,24 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 1,
   },
+  inlineStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+  },
   inlineStats: {
     fontSize: 13,
     color: colors.textMuted,
-    marginTop: spacing.xs,
+  },
+  inlineStatsDot: {
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  inlineStatsLink: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   bio: {
     fontSize: 13,
