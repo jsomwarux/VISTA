@@ -30,8 +30,8 @@ export function useRatings() {
         .single();
 
       if (existing) {
-        // Update existing rating
-        const { error } = await supabase
+        // Update existing rating - try with watched_at first
+        let { error } = await supabase
           .from('ratings')
           .update({
             score,
@@ -41,10 +41,22 @@ export function useRatings() {
           })
           .eq('id', existing.id);
 
-        if (error) throw error;
+        // If error (likely watched_at column doesn't exist), retry without it
+        if (error) {
+          const retryResult = await supabase
+            .from('ratings')
+            .update({
+              score,
+              review,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id);
+
+          if (retryResult.error) throw retryResult.error;
+        }
       } else {
-        // Create new rating
-        const { error } = await supabase
+        // Create new rating - try with watched_at first
+        let { error } = await supabase
           .from('ratings')
           .insert({
             user_id: userId,
@@ -57,7 +69,22 @@ export function useRatings() {
             watched_at: watchedAtDate.toISOString(),
           });
 
-        if (error) throw error;
+        // If error (likely watched_at column doesn't exist), retry without it
+        if (error) {
+          const retryResult = await supabase
+            .from('ratings')
+            .insert({
+              user_id: userId,
+              movie_id: movieId,
+              score,
+              review,
+              movie_title: movieTitle,
+              movie_poster: moviePoster,
+              movie_year: movieYear,
+            });
+
+          if (retryResult.error) throw retryResult.error;
+        }
       }
 
       return { error: null };
