@@ -25,10 +25,15 @@ CREATE TABLE ratings (
   movie_title TEXT NOT NULL,
   movie_poster TEXT,
   movie_year TEXT,
+  watched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id, movie_id)
 );
+
+-- Migration: Add watched_at column to existing ratings table (run if upgrading)
+-- ALTER TABLE ratings ADD COLUMN IF NOT EXISTS watched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
+-- UPDATE ratings SET watched_at = created_at WHERE watched_at IS NULL;
 
 -- Likes table
 CREATE TABLE likes (
@@ -62,6 +67,7 @@ CREATE TABLE follows (
 CREATE INDEX idx_ratings_user_id ON ratings(user_id);
 CREATE INDEX idx_ratings_movie_id ON ratings(movie_id);
 CREATE INDEX idx_ratings_created_at ON ratings(created_at DESC);
+CREATE INDEX idx_ratings_watched_at ON ratings(watched_at DESC);
 CREATE INDEX idx_likes_rating_id ON likes(rating_id);
 CREATE INDEX idx_likes_user_id ON likes(user_id);
 CREATE INDEX idx_comments_rating_id ON comments(rating_id);

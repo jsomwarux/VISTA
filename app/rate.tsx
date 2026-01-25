@@ -10,7 +10,9 @@ import {
   Platform,
   FlatList,
   Alert,
+  Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, getScoreColor } from '../src/constants/theme';
@@ -39,8 +41,10 @@ export default function RateScreen() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [score, setScore] = useState(50);
   const [review, setReview] = useState('');
-  const [existingRating, setExistingRating] = useState<{ score: number; review: string | null } | null>(null);
+  const [existingRating, setExistingRating] = useState<{ score: number; review: string | null; watched_at?: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [watchedAt, setWatchedAt] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (movieId) {
@@ -81,9 +85,12 @@ export default function RateScreen() {
         if (ratings) {
           const existing = ratings.find(r => r.movie_id === id);
           if (existing) {
-            setExistingRating({ score: existing.score, review: existing.review });
+            setExistingRating({ score: existing.score, review: existing.review, watched_at: existing.watched_at });
             setScore(existing.score);
             setReview(existing.review || '');
+            if (existing.watched_at) {
+              setWatchedAt(new Date(existing.watched_at));
+            }
           }
         }
       }
@@ -106,9 +113,15 @@ export default function RateScreen() {
       if (ratings) {
         const existing = ratings.find(r => r.movie_id === movie.id);
         if (existing) {
-          setExistingRating({ score: existing.score, review: existing.review });
+          setExistingRating({ score: existing.score, review: existing.review, watched_at: existing.watched_at });
           setScore(existing.score);
           setReview(existing.review || '');
+          if (existing.watched_at) {
+            setWatchedAt(new Date(existing.watched_at));
+          }
+        } else {
+          // Reset to today for new rating
+          setWatchedAt(new Date());
         }
       }
     }
@@ -129,7 +142,8 @@ export default function RateScreen() {
       review.trim() || null,
       selectedMovie.title,
       selectedMovie.poster_path,
-      year
+      year,
+      watchedAt
     );
 
     if (error) {
@@ -310,6 +324,33 @@ export default function RateScreen() {
             </View>
           </View>
 
+          {/* Watch Date */}
+          <View style={styles.dateSection}>
+            <Text style={styles.sectionLabel}>WHEN DID YOU WATCH IT?</Text>
+            <Pressable
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+              <Text style={styles.dateButtonText}>
+                {watchedAt.toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+            </Pressable>
+            {watchedAt.toDateString() !== new Date().toDateString() && (
+              <Pressable
+                style={styles.resetDateButton}
+                onPress={() => setWatchedAt(new Date())}
+              >
+                <Text style={styles.resetDateText}>Reset to today</Text>
+              </Pressable>
+            )}
+          </View>
+
           {/* Review */}
           <View style={styles.reviewSection}>
             <Text style={styles.sectionLabel}>REVIEW (OPTIONAL)</Text>
@@ -343,6 +384,206 @@ export default function RateScreen() {
           )}
         </ScrollView>
       ) : null}
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.datePickerModal}>
+            <View style={styles.datePickerHeader}>
+              <Text style={styles.datePickerTitle}>Select Date</Text>
+              <Pressable onPress={() => setShowDatePicker(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </Pressable>
+            </View>
+
+            {/* Quick Select Options */}
+            <View style={styles.quickDateOptions}>
+              <Pressable
+                style={styles.quickDateButton}
+                onPress={() => {
+                  setWatchedAt(new Date());
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.quickDateText}>Today</Text>
+              </Pressable>
+              <Pressable
+                style={styles.quickDateButton}
+                onPress={() => {
+                  const yesterday = new Date();
+                  yesterday.setDate(yesterday.getDate() - 1);
+                  setWatchedAt(yesterday);
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.quickDateText}>Yesterday</Text>
+              </Pressable>
+              <Pressable
+                style={styles.quickDateButton}
+                onPress={() => {
+                  const lastWeek = new Date();
+                  lastWeek.setDate(lastWeek.getDate() - 7);
+                  setWatchedAt(lastWeek);
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.quickDateText}>Last Week</Text>
+              </Pressable>
+            </View>
+
+            {/* Month/Year Selector */}
+            <View style={styles.monthYearSelector}>
+              <Text style={styles.selectorLabel}>Month</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.monthScroll}
+              >
+                {Array.from({ length: 12 }, (_, i) => {
+                  const monthDate = new Date(watchedAt.getFullYear(), i, 1);
+                  const monthName = monthDate.toLocaleDateString('en-US', { month: 'short' });
+                  const isSelected = watchedAt.getMonth() === i;
+                  const isFuture = new Date(watchedAt.getFullYear(), i, 1) > new Date();
+                  return (
+                    <Pressable
+                      key={i}
+                      style={[
+                        styles.monthButton,
+                        isSelected && styles.monthButtonSelected,
+                        isFuture && styles.monthButtonDisabled,
+                      ]}
+                      onPress={() => {
+                        if (!isFuture) {
+                          const newDate = new Date(watchedAt);
+                          newDate.setMonth(i);
+                          // Ensure day is valid for new month
+                          if (newDate.getDate() !== watchedAt.getDate()) {
+                            newDate.setDate(0); // Last day of previous month
+                          }
+                          setWatchedAt(newDate);
+                        }
+                      }}
+                      disabled={isFuture}
+                    >
+                      <Text
+                        style={[
+                          styles.monthButtonText,
+                          isSelected && styles.monthButtonTextSelected,
+                          isFuture && styles.monthButtonTextDisabled,
+                        ]}
+                      >
+                        {monthName}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={styles.monthYearSelector}>
+              <Text style={styles.selectorLabel}>Year</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.monthScroll}
+              >
+                {Array.from({ length: 20 }, (_, i) => {
+                  const year = new Date().getFullYear() - i;
+                  const isSelected = watchedAt.getFullYear() === year;
+                  return (
+                    <Pressable
+                      key={year}
+                      style={[
+                        styles.monthButton,
+                        isSelected && styles.monthButtonSelected,
+                      ]}
+                      onPress={() => {
+                        const newDate = new Date(watchedAt);
+                        newDate.setFullYear(year);
+                        // If future date after year change, set to today
+                        if (newDate > new Date()) {
+                          setWatchedAt(new Date());
+                        } else {
+                          setWatchedAt(newDate);
+                        }
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.monthButtonText,
+                          isSelected && styles.monthButtonTextSelected,
+                        ]}
+                      >
+                        {year}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Day Selector */}
+            <View style={styles.monthYearSelector}>
+              <Text style={styles.selectorLabel}>Day</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.monthScroll}
+              >
+                {Array.from(
+                  { length: new Date(watchedAt.getFullYear(), watchedAt.getMonth() + 1, 0).getDate() },
+                  (_, i) => {
+                    const day = i + 1;
+                    const isSelected = watchedAt.getDate() === day;
+                    const dateToCheck = new Date(watchedAt.getFullYear(), watchedAt.getMonth(), day);
+                    const isFuture = dateToCheck > new Date();
+                    return (
+                      <Pressable
+                        key={day}
+                        style={[
+                          styles.dayButton,
+                          isSelected && styles.monthButtonSelected,
+                          isFuture && styles.monthButtonDisabled,
+                        ]}
+                        onPress={() => {
+                          if (!isFuture) {
+                            const newDate = new Date(watchedAt);
+                            newDate.setDate(day);
+                            setWatchedAt(newDate);
+                          }
+                        }}
+                        disabled={isFuture}
+                      >
+                        <Text
+                          style={[
+                            styles.dayButtonText,
+                            isSelected && styles.monthButtonTextSelected,
+                            isFuture && styles.monthButtonTextDisabled,
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </Pressable>
+                    );
+                  }
+                )}
+              </ScrollView>
+            </View>
+
+            <Pressable
+              style={styles.datePickerDoneButton}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={styles.datePickerDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -557,5 +798,136 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+  dateSection: {
+    marginBottom: spacing.xl,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  dateButtonText: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  resetDateButton: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+  },
+  resetDateText: {
+    fontSize: 13,
+    color: colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  datePickerModal: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  quickDateOptions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  quickDateButton: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  quickDateText: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  monthYearSelector: {
+    marginBottom: spacing.md,
+  },
+  selectorLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  monthScroll: {
+    gap: spacing.xs,
+  },
+  monthButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
+  },
+  monthButtonSelected: {
+    backgroundColor: colors.primary,
+  },
+  monthButtonDisabled: {
+    opacity: 0.3,
+  },
+  monthButtonText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  monthButtonTextSelected: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  monthButtonTextDisabled: {
+    color: colors.textMuted,
+  },
+  dayButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayButtonText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  datePickerDoneButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  datePickerDoneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
 });

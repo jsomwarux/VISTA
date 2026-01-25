@@ -53,6 +53,7 @@ export interface Rating {
   movie_id: number;
   score: number;
   review: string | null;
+  watched_at: string;
   created_at: string;
   updated_at: string;
   user?: User;

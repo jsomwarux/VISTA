@@ -13,10 +13,13 @@ export function useRatings() {
     review: string | null,
     movieTitle: string,
     moviePoster: string | null,
-    movieYear: string
+    movieYear: string,
+    watchedAt?: Date
   ) => {
     try {
       setLoading(true);
+
+      const watchedAtDate = watchedAt || new Date();
 
       // Check if rating already exists
       const { data: existing } = await supabase
@@ -33,6 +36,7 @@ export function useRatings() {
           .update({
             score,
             review,
+            watched_at: watchedAtDate.toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
@@ -50,6 +54,7 @@ export function useRatings() {
             movie_title: movieTitle,
             movie_poster: moviePoster,
             movie_year: movieYear,
+            watched_at: watchedAtDate.toISOString(),
           });
 
         if (error) throw error;
@@ -290,11 +295,14 @@ export function useRatings() {
       // Top all time (top 5 highest rated)
       const topAllTime = ratings.slice(0, 5);
 
-      // Top recent (last 30 days, top 5)
+      // Top recent (watched in last 30 days, top 5)
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const recentRatings = ratings
-        .filter(r => new Date(r.created_at) >= thirtyDaysAgo)
+        .filter(r => {
+          const watchedDate = r.watched_at ? new Date(r.watched_at) : new Date(r.created_at);
+          return watchedDate >= thirtyDaysAgo;
+        })
         .sort((a, b) => b.score - a.score)
         .slice(0, 5);
 
