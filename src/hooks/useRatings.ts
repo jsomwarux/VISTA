@@ -342,47 +342,55 @@ export function useRatings() {
       const directorScores: Record<number, { name: string; total: number; count: number; profile_path: string | null }> = {};
 
       // Fetch details for top-rated movies to calculate taste stats
-      const topMovieIds = ratings.slice(0, 50).map(r => r.movie_id);
+      // Limit to 20 movies and fetch in parallel for performance
+      const ratingsToProcess = ratings.slice(0, 20);
 
-      for (const rating of ratings.slice(0, 50)) {
+      const movieDetailsPromises = ratingsToProcess.map(async (rating) => {
         try {
           const movie = await getMovieDetails(rating.movie_id);
-
-          // Process genres
-          if (movie.genres) {
-            for (const genre of movie.genres) {
-              if (!genreScores[genre.name]) {
-                genreScores[genre.name] = { total: 0, count: 0 };
-              }
-              genreScores[genre.name].total += rating.score;
-              genreScores[genre.name].count += 1;
-            }
-          }
-
-          // Process cast (top 5 billed)
-          if (movie.credits?.cast) {
-            for (const actor of movie.credits.cast.slice(0, 5)) {
-              if (!actorScores[actor.id]) {
-                actorScores[actor.id] = { name: actor.name, total: 0, count: 0, profile_path: actor.profile_path };
-              }
-              actorScores[actor.id].total += rating.score;
-              actorScores[actor.id].count += 1;
-            }
-          }
-
-          // Process directors
-          if (movie.credits?.crew) {
-            const directors = movie.credits.crew.filter(c => c.job === 'Director');
-            for (const director of directors) {
-              if (!directorScores[director.id]) {
-                directorScores[director.id] = { name: director.name, total: 0, count: 0, profile_path: director.profile_path };
-              }
-              directorScores[director.id].total += rating.score;
-              directorScores[director.id].count += 1;
-            }
-          }
+          return { rating, movie };
         } catch (e) {
-          // Skip if movie details can't be fetched
+          return { rating, movie: null };
+        }
+      });
+
+      const movieResults = await Promise.all(movieDetailsPromises);
+
+      for (const { rating, movie } of movieResults) {
+        if (!movie) continue;
+
+        // Process genres
+        if (movie.genres) {
+          for (const genre of movie.genres) {
+            if (!genreScores[genre.name]) {
+              genreScores[genre.name] = { total: 0, count: 0 };
+            }
+            genreScores[genre.name].total += rating.score;
+            genreScores[genre.name].count += 1;
+          }
+        }
+
+        // Process cast (top 5 billed)
+        if (movie.credits?.cast) {
+          for (const actor of movie.credits.cast.slice(0, 5)) {
+            if (!actorScores[actor.id]) {
+              actorScores[actor.id] = { name: actor.name, total: 0, count: 0, profile_path: actor.profile_path };
+            }
+            actorScores[actor.id].total += rating.score;
+            actorScores[actor.id].count += 1;
+          }
+        }
+
+        // Process directors
+        if (movie.credits?.crew) {
+          const directors = movie.credits.crew.filter(c => c.job === 'Director');
+          for (const director of directors) {
+            if (!directorScores[director.id]) {
+              directorScores[director.id] = { name: director.name, total: 0, count: 0, profile_path: director.profile_path };
+            }
+            directorScores[director.id].total += rating.score;
+            directorScores[director.id].count += 1;
+          }
         }
       }
 

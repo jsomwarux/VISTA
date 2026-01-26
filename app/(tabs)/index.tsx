@@ -57,17 +57,20 @@ export default function ProfileTab() {
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const [ratingsResult, statsResult, countsResult] = await Promise.all([
+    // Load ratings and follow counts first (fast queries)
+    const [ratingsResult, countsResult] = await Promise.all([
       getUserRatings(user.id),
-      getUserTasteStats(user.id),
       getFollowCounts(user.id),
     ]);
 
     if (ratingsResult.data) {
       setRatings(ratingsResult.data);
     }
-    setTasteStats(statsResult);
     setFollowCounts(countsResult);
+
+    // Load taste stats separately (slower - requires TMDB API calls)
+    const statsResult = await getUserTasteStats(user.id);
+    setTasteStats(statsResult);
   }, [user]);
 
   useEffect(() => {
