@@ -21,9 +21,10 @@ import {
   Avatar,
   LoadingSpinner,
   GradientButton,
+  WatchProviders,
 } from '../../src/components';
-import { Movie, Rating } from '../../src/types';
-import { getMovieDetails, getImageUrl } from '../../src/lib/tmdb';
+import { Movie, Rating, WatchProviders as WatchProvidersType } from '../../src/types';
+import { getMovieDetails, getImageUrl, getMovieWatchProviders } from '../../src/lib/tmdb';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ export default function MovieDetailScreen() {
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [vistaScore, setVistaScore] = useState<{ avgScore: number | null; count: number }>({ avgScore: null, count: 0 });
   const [userRating, setUserRating] = useState<Rating | null>(null);
+  const [watchProviders, setWatchProviders] = useState<WatchProvidersType | null>(null);
   const [loading, setLoading] = useState(true);
   const [onWatchlist, setOnWatchlist] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
@@ -48,10 +50,11 @@ export default function MovieDetailScreen() {
 
       try {
         const movieId = parseInt(id);
-        const [movieData, ratingsData, scoreData] = await Promise.all([
+        const [movieData, ratingsData, scoreData, providersData] = await Promise.all([
           getMovieDetails(movieId),
           getMovieRatings(movieId),
           getMovieAverageScore(movieId),
+          getMovieWatchProviders(movieId),
         ]);
 
         setMovie(movieData);
@@ -59,6 +62,7 @@ export default function MovieDetailScreen() {
           setRatings(ratingsData.data);
         }
         setVistaScore(scoreData);
+        setWatchProviders(providersData);
 
         // Check if user has rated this movie and watchlist status
         if (user) {
@@ -242,6 +246,9 @@ export default function MovieDetailScreen() {
               </Pressable>
             )}
           </View>
+
+          {/* Where to Watch */}
+          <WatchProviders providers={watchProviders} />
 
           {/* Overview */}
           {movie.overview && (

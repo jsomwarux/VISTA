@@ -20,3 +20,4 @@ export { SkeletonLoader, MoviePosterSkeleton, RatingCardSkeleton, ProfileHeaderS
 export { AnimatedPressable } from './AnimatedPressable';
 export { AnimatedHeart } from './AnimatedHeart';
 export { TasteMatchBadge } from './TasteMatchBadge';
+export { WatchProviders } from './WatchProviders';

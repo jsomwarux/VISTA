@@ -1,4 +1,4 @@
-import { Movie, TMDBSearchResult, Genre } from '../types';
+import { Movie, TMDBSearchResult, Genre, WatchProviders } from '../types';
 
 const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || 'c4c98f08442b06c1f26e6c1332a14218';
 const TMDB_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TMDB_ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjNGM5OGYwODQ0MmIwNmMxZjI2ZTZjMTMzMmExNDIxOCIsIm5iZiI6MTc2ODk5NjE1My4zNDcwMDAxLCJzdWIiOiI2OTcwYmQzOWEyNGM4YzA2YzI4MTNjZjYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.z7h8WeFJ2efQXDq-l67ECXQJ8xf9kfZuYuEldy99nsA';
@@ -124,4 +124,14 @@ export const GENRE_MAP: Record<number, string> = {
 
 export const getGenreName = (genreId: number): string => {
   return GENRE_MAP[genreId] || 'Unknown';
+};
+
+export const getMovieWatchProviders = async (movieId: number, region: string = 'US'): Promise<WatchProviders | null> => {
+  const response = await fetch(
+    `${BASE_URL}/movie/${movieId}/watch/providers`,
+    { headers }
+  );
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.results?.[region] || null;
 };
