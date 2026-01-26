@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, shadows } from '../constants/theme';
+import { colors, spacing, borderRadius } from '../constants/theme';
 import { WatchProviders as WatchProvidersType, WatchProvider } from '../types';
 import { getImageUrl } from '../lib/tmdb';
 
@@ -19,6 +19,8 @@ interface WatchProvidersProps {
 }
 
 export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loading }) => {
+  const [expanded, setExpanded] = useState(false);
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -32,13 +34,13 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
 
   // Check if there are any providers
   const hasStreamingProviders = providers?.flatrate && providers.flatrate.length > 0;
+  const hasFreeProviders = providers?.free && providers.free.length > 0;
   const hasRentProviders = providers?.rent && providers.rent.length > 0;
   const hasBuyProviders = providers?.buy && providers.buy.length > 0;
-  const hasFreeProviders = providers?.free && providers.free.length > 0;
   const hasAnyProviders = hasStreamingProviders || hasRentProviders || hasBuyProviders || hasFreeProviders;
 
   if (!hasAnyProviders) {
-    return null; // Hide section if no providers available
+    return null;
   }
 
   const handleOpenLink = () => {
@@ -80,15 +82,74 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
     );
   };
 
+  // Determine primary and secondary sections based on priority:
+  // Stream (flatrate) > Free > Rent > Buy
+  let primarySection: React.ReactNode = null;
+  let secondarySections: React.ReactNode[] = [];
+  let expandLabel = '';
+
+  if (hasStreamingProviders || hasFreeProviders) {
+    // Show streaming/free as primary
+    primarySection = (
+      <>
+        {hasStreamingProviders && renderProviderRow(providers!.flatrate!, 'Stream')}
+        {hasFreeProviders && renderProviderRow(providers!.free!, 'Free')}
+      </>
+    );
+    // Rent and Buy are secondary (expandable)
+    if (hasRentProviders) secondarySections.push(renderProviderRow(providers!.rent!, 'Rent'));
+    if (hasBuyProviders) secondarySections.push(renderProviderRow(providers!.buy!, 'Buy'));
+    if (hasRentProviders && hasBuyProviders) {
+      expandLabel = 'Rent & Buy options';
+    } else if (hasRentProviders) {
+      expandLabel = 'Rent options';
+    } else if (hasBuyProviders) {
+      expandLabel = 'Buy options';
+    }
+  } else if (hasRentProviders) {
+    // No streaming - show Rent as primary
+    primarySection = renderProviderRow(providers!.rent!, 'Rent');
+    // Buy is secondary
+    if (hasBuyProviders) {
+      secondarySections.push(renderProviderRow(providers!.buy!, 'Buy'));
+      expandLabel = 'Buy options';
+    }
+  } else if (hasBuyProviders) {
+    // Only Buy available - show it as primary
+    primarySection = renderProviderRow(providers!.buy!, 'Buy');
+  }
+
+  const hasExpandableContent = secondarySections.length > 0;
+
   return (
     <View style={styles.container}>
       <Text style={styles.sectionTitle}>WHERE TO WATCH</Text>
 
       <View style={styles.providersCard}>
-        {hasStreamingProviders && renderProviderRow(providers!.flatrate!, 'Stream')}
-        {hasFreeProviders && renderProviderRow(providers!.free!, 'Free')}
-        {hasRentProviders && renderProviderRow(providers!.rent!, 'Rent')}
-        {hasBuyProviders && renderProviderRow(providers!.buy!, 'Buy')}
+        {primarySection}
+
+        {hasExpandableContent && (
+          <>
+            {expanded && (
+              <View style={styles.expandedContent}>
+                {secondarySections}
+              </View>
+            )}
+            <Pressable
+              style={styles.expandButton}
+              onPress={() => setExpanded(!expanded)}
+            >
+              <Text style={styles.expandButtonText}>
+                {expanded ? 'Show less' : `Show ${expandLabel}`}
+              </Text>
+              <Ionicons
+                name={expanded ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.textSecondary}
+              />
+            </Pressable>
+          </>
+        )}
 
         <View style={styles.attribution}>
           <Ionicons name="information-circle-outline" size={12} color={colors.textMuted} />
@@ -155,6 +216,22 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: spacing.xs,
     textAlign: 'center',
+  },
+  expandedContent: {
+    marginTop: spacing.xs,
+  },
+  expandButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  expandButtonText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
   attribution: {
     flexDirection: 'row',
