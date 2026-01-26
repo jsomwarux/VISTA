@@ -19,7 +19,6 @@ function TabIcon({ name, focused }: TabIconProps) {
         size={24}
         color={focused ? colors.primary : colors.textMuted}
       />
-      {focused && <View style={styles.activeIndicator} />}
     </View>
   );
 }
@@ -104,14 +103,6 @@ const styles = StyleSheet.create({
   },
   iconContainerActive: {
     transform: [{ scale: 1.05 }],
-  },
-  activeIndicator: {
-    position: 'absolute',
-    bottom: -8,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.primary,
   },
   fab: {
     position: 'absolute',
