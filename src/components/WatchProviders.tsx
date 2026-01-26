@@ -16,9 +16,10 @@ import { getImageUrl } from '../lib/tmdb';
 interface WatchProvidersProps {
   providers: WatchProvidersType | null;
   loading?: boolean;
+  releaseDate?: string;
 }
 
-export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loading }) => {
+export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loading, releaseDate }) => {
   const [expanded, setExpanded] = useState(false);
 
   if (loading) {
@@ -39,7 +40,21 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
   const hasBuyProviders = providers?.buy && providers.buy.length > 0;
   const hasAnyProviders = hasStreamingProviders || hasRentProviders || hasBuyProviders || hasFreeProviders;
 
-  if (!hasAnyProviders) {
+  // Check if movie is likely in theaters (released within last 4 months, no home options)
+  const isInTheaters = (() => {
+    if (hasAnyProviders) return false;
+    if (!releaseDate) return false;
+
+    const release = new Date(releaseDate);
+    const now = new Date();
+    const fourMonthsAgo = new Date();
+    fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
+
+    // Movie is in theaters if released between 4 months ago and today (or future)
+    return release >= fourMonthsAgo && release <= now;
+  })();
+
+  if (!hasAnyProviders && !isInTheaters) {
     return null;
   }
 
@@ -120,6 +135,30 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
   }
 
   const hasExpandableContent = secondarySections.length > 0;
+
+  // Show "In Theaters" if no providers but movie is recent
+  if (isInTheaters) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.sectionTitle}>WHERE TO WATCH</Text>
+        <View style={styles.providersCard}>
+          <View style={styles.inTheatersContainer}>
+            <View style={styles.inTheatersIcon}>
+              <Ionicons name="film" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.inTheatersText}>
+              <Text style={styles.inTheatersTitle}>In Theaters</Text>
+              <Text style={styles.inTheatersSubtitle}>Check local showtimes</Text>
+            </View>
+          </View>
+          <View style={styles.attribution}>
+            <Ionicons name="information-circle-outline" size={12} color={colors.textMuted} />
+            <Text style={styles.attributionText}>Data provided by JustWatch</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -232,6 +271,33 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
     fontWeight: '500',
+  },
+  inTheatersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  inTheatersIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inTheatersText: {
+    marginLeft: spacing.md,
+  },
+  inTheatersTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  inTheatersSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
   },
   attribution: {
     flexDirection: 'row',

@@ -248,7 +248,7 @@ export default function MovieDetailScreen() {
           </View>
 
           {/* Where to Watch */}
-          <WatchProviders providers={watchProviders} />
+          <WatchProviders providers={watchProviders} releaseDate={movie.release_date} />
 
           {/* Overview */}
           {movie.overview && (
