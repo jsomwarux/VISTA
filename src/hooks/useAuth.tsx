@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { unregisterPushToken } from '../lib/pushNotifications';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -11,6 +12,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<{ error: Error | null }>;
+  deleteAccount: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,35 +23,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let mounted = true;
+
+    // Safety timeout: if auth never resolves, stop loading so the app doesn't hang
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+      }
+    }, 10000);
+
+    supabase.auth.getSession().then((result) => {
+      if (!mounted) return;
+      const session = result?.data?.session ?? null;
       setSession(session);
       if (session?.user) {
         fetchUserProfile(session.user.id);
       } else {
         setLoading(false);
       }
+    }).catch(() => {
+      if (mounted) setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
       setSession(session);
       if (session?.user) {
-        await fetchUserProfile(session.user.id);
+        fetchUserProfile(session.user.id, 0);
       } else {
         setUser(null);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (userId: string, retries = 3): Promise<User | null> => {
     try {
-      const { data, error } = await supabase
+      // Race the Supabase query against a timeout to prevent hanging
+      const queryPromise = supabase
         .from('users')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timed out')), 10000)
+      );
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
 
       if (error) throw error;
 
@@ -103,11 +130,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Race against a timeout so sign-in never hangs indefinitely
+      const signInPromise = supabase.auth.signInWithPassword({
         email,
         password,
       });
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timed out. Please try again.')), 15000)
+      );
+
+      const { data, error } = await Promise.race([signInPromise, timeoutPromise]);
       if (error) throw error;
+
+      // Kick off profile fetch in the background — don't await it here.
+      // The onAuthStateChange listener will also call fetchUserProfile,
+      // so the profile will be ready by the time the tabs screen mounts.
+      if (data?.user) {
+        fetchUserProfile(data.user.id, 0).catch(() => {});
+      }
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -115,6 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    if (user) {
+      await unregisterPushToken(user.id);
+    }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
@@ -138,8 +182,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteAccount = async () => {
+    try {
+      if (!user) throw new Error('No user logged in');
+
+      const { error } = await supabase.rpc('delete_own_account');
+      if (error) throw error;
+
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user, loading, signUp, signIn, signOut, updateProfile }}>
+    <AuthContext.Provider value={{ session, user, loading, signUp, signIn, signOut, updateProfile, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

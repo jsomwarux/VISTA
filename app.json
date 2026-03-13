@@ -1,5 +1,6 @@
 {
   "expo": {
+    "platforms": ["ios"],
     "name": "VISTA - Movie Profiles",
     "slug": "vista",
     "version": "1.0.1",
@@ -18,24 +19,19 @@
       "bundleIdentifier": "com.jsomwaru.vista",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleDisplayName": "VISTA"
+        "CFBundleDisplayName": "VISTA",
+        "NSPhotoLibraryUsageDescription": "VISTA uses your photo library to let you choose a profile picture that will be visible to other users."
       }
-    },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0A0A"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.jsomwaru.vista"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png",
-      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "router": {

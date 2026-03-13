@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,11 @@ import {
   ScrollView,
   Image,
   Pressable,
-  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, shadows, getScoreColor } from '../../src/constants/theme';
+import { colors, spacing, borderRadius, shadows } from '../../src/constants/theme';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useRatings } from '../../src/hooks/useRatings';
 import { useWatchlist } from '../../src/hooks/useWatchlist';
@@ -25,8 +24,6 @@ import {
 } from '../../src/components';
 import { Movie, Rating, WatchProviders as WatchProvidersType } from '../../src/types';
 import { getMovieDetails, getImageUrl, getMovieWatchProviders } from '../../src/lib/tmdb';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -44,18 +41,33 @@ export default function MovieDetailScreen() {
   const [onWatchlist, setOnWatchlist] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
 
+  const scrollRef = useRef<ScrollView>(null);
+  const reviewsY = useRef(0);
+
+  const scrollToReviews = () => {
+    scrollRef.current?.scrollTo({ y: reviewsY.current, animated: true });
+  };
+
   useEffect(() => {
+    let cancelled = false;
+
     const loadMovie = async () => {
       if (!id) return;
 
       try {
         const movieId = parseInt(id);
+
+        // Load movie details and community data in parallel
+        // Wrap Supabase calls with individual catches so a single failure
+        // doesn't block the entire page from loading
         const [movieData, ratingsData, scoreData, providersData] = await Promise.all([
           getMovieDetails(movieId),
-          getMovieRatings(movieId),
-          getMovieAverageScore(movieId),
-          getMovieWatchProviders(movieId),
+          getMovieRatings(movieId).catch(() => ({ data: null, error: null })),
+          getMovieAverageScore(movieId).catch(() => ({ avgScore: null, count: 0 })),
+          getMovieWatchProviders(movieId).catch(() => null),
         ]);
+
+        if (cancelled) return;
 
         setMovie(movieData);
         if (ratingsData.data) {
@@ -66,27 +78,38 @@ export default function MovieDetailScreen() {
 
         // Check if user has rated this movie and watchlist status
         if (user) {
-          const [userRatings, watchlistStatus] = await Promise.all([
-            getUserRatings(user.id),
-            isOnWatchlist(user.id, movieId),
-          ]);
-          if (userRatings.data) {
-            const existing = userRatings.data.find(r => r.movie_id === movieId);
-            if (existing) {
-              setUserRating(existing);
+          try {
+            const [userRatings, watchlistStatus] = await Promise.all([
+              getUserRatings(user.id),
+              isOnWatchlist(user.id, movieId),
+            ]);
+            if (cancelled) return;
+            if (userRatings.data) {
+              const existing = userRatings.data.find(r => r.movie_id === movieId);
+              if (existing) {
+                setUserRating(existing);
+              }
             }
+            setOnWatchlist(watchlistStatus);
+          } catch {
+            // User-specific data is non-critical; continue without it
           }
-          setOnWatchlist(watchlistStatus);
         }
       } catch (error) {
         console.error('Error loading movie:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadMovie();
-  }, [id, user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user?.id]);
 
   const handleWatchlistToggle = async () => {
     if (!user || !movie || watchlistLoading) return;
@@ -141,7 +164,7 @@ export default function MovieDetailScreen() {
         }}
       />
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Backdrop Hero with Premium Gradient */}
         <View style={styles.heroContainer}>
           {movie.backdrop_path ? (
@@ -184,7 +207,7 @@ export default function MovieDetailScreen() {
 
           {/* Premium Score Comparison Card */}
           {(vistaScore.avgScore || userRating) && (
-            <View style={styles.scoreCard}>
+            <Pressable style={styles.scoreCard} onPress={scrollToReviews}>
               <View style={styles.scoreCardContent}>
                 {vistaScore.avgScore && (
                   <View style={styles.scoreColumn}>
@@ -216,7 +239,7 @@ export default function MovieDetailScreen() {
                   </View>
                 )}
               </View>
-            </View>
+            </Pressable>
           )}
 
           {/* Action Buttons Row */}
@@ -266,7 +289,7 @@ export default function MovieDetailScreen() {
               </Text>
               <View style={styles.crewRow}>
                 {directors.map((director) => (
-                  <View key={director.id} style={styles.crewItem}>
+                  <Pressable key={director.id} style={styles.crewItem} onPress={() => router.push(`/person/${director.id}`)}>
                     {director.profile_path ? (
                       <Image
                         source={{ uri: getImageUrl(director.profile_path, 'w185') || '' }}
@@ -278,7 +301,7 @@ export default function MovieDetailScreen() {
                       </View>
                     )}
                     <Text style={styles.crewName}>{director.name}</Text>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             </View>
@@ -290,7 +313,7 @@ export default function MovieDetailScreen() {
               <Text style={styles.sectionTitle}>TOP CAST</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {topCast.map((actor) => (
-                  <View key={actor.id} style={styles.castItem}>
+                  <Pressable key={actor.id} style={styles.castItem} onPress={() => router.push(`/person/${actor.id}`)}>
                     {actor.profile_path ? (
                       <Image
                         source={{ uri: getImageUrl(actor.profile_path, 'w185') || '' }}
@@ -303,7 +326,7 @@ export default function MovieDetailScreen() {
                     )}
                     <Text style={styles.castName} numberOfLines={1}>{actor.name}</Text>
                     <Text style={styles.castCharacter} numberOfLines={1}>{actor.character}</Text>
-                  </View>
+                  </Pressable>
                 ))}
               </ScrollView>
             </View>
@@ -311,7 +334,13 @@ export default function MovieDetailScreen() {
 
           {/* User Reviews */}
           {ratings.length > 0 && (
-            <View style={styles.section}>
+            <View
+              style={styles.section}
+              onLayout={(e) => {
+                // Y relative to parent (content View) — add hero height + content marginTop + content padding
+                reviewsY.current = 300 - 80 + spacing.md + e.nativeEvent.layout.y;
+              }}
+            >
               <Text style={styles.sectionTitle}>REVIEWS ({ratings.length})</Text>
               {ratings.slice(0, 5).map((rating) => (
                 <Pressable

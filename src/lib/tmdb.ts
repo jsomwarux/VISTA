@@ -1,7 +1,7 @@
-import { Movie, TMDBSearchResult, Genre, WatchProviders } from '../types';
+import { Movie, TMDBSearchResult, Genre, WatchProviders, Person, PersonMovieCredit } from '../types';
 
-const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || 'c4c98f08442b06c1f26e6c1332a14218';
-const TMDB_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TMDB_ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjNGM5OGYwODQ0MmIwNmMxZjI2ZTZjMTMzMmExNDIxOCIsIm5iZiI6MTc2ODk5NjE1My4zNDcwMDAxLCJzdWIiOiI2OTcwYmQzOWEyNGM4YzA2YzI4MTNjZjYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.z7h8WeFJ2efQXDq-l67ECXQJ8xf9kfZuYuEldy99nsA';
+const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || '';
+const TMDB_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TMDB_ACCESS_TOKEN || '';
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 const headers = {
@@ -22,7 +22,10 @@ export const searchMovies = async (query: string, page: number = 1): Promise<TMD
     { headers }
   );
   if (!response.ok) throw new Error('Failed to search movies');
-  return response.json();
+  const data = await response.json();
+  // Sort by popularity so well-known movies surface first
+  data.results.sort((a: any, b: any) => (b.popularity ?? 0) - (a.popularity ?? 0));
+  return data;
 };
 
 export const getTrendingMovies = async (timeWindow: 'day' | 'week' = 'week'): Promise<Movie[]> => {
@@ -41,6 +44,15 @@ export const getPopularMovies = async (page: number = 1): Promise<TMDBSearchResu
     { headers }
   );
   if (!response.ok) throw new Error('Failed to fetch popular movies');
+  return response.json();
+};
+
+export const getTopRatedMovies = async (page: number = 1): Promise<TMDBSearchResult> => {
+  const response = await fetch(
+    `${BASE_URL}/movie/top_rated?page=${page}`,
+    { headers }
+  );
+  if (!response.ok) throw new Error('Failed to fetch top rated movies');
   return response.json();
 };
 
@@ -81,7 +93,7 @@ export const getGenres = async (): Promise<Genre[]> => {
   return data.genres;
 };
 
-export const getPersonDetails = async (personId: number) => {
+export const getPersonDetails = async (personId: number): Promise<Person> => {
   const response = await fetch(
     `${BASE_URL}/person/${personId}`,
     { headers }
@@ -90,7 +102,7 @@ export const getPersonDetails = async (personId: number) => {
   return response.json();
 };
 
-export const getPersonMovieCredits = async (personId: number) => {
+export const getPersonMovieCredits = async (personId: number): Promise<{ cast: PersonMovieCredit[]; crew: PersonMovieCredit[] }> => {
   const response = await fetch(
     `${BASE_URL}/person/${personId}/movie_credits`,
     { headers }

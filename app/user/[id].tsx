@@ -8,6 +8,7 @@ import {
   Pressable,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,7 +46,7 @@ export default function UserProfileScreen() {
   const router = useRouter();
   const { user: currentUser } = useAuth();
   const { getUserRatings, getUserTasteStats, getTasteMatch } = useRatings();
-  const { getUserById, getFollowCounts, isFollowing, followUser, unfollowUser } = useSocial();
+  const { getUserById, getFollowCounts, isFollowing, followUser, unfollowUser, blockUser, reportContent } = useSocial();
 
   const [user, setUser] = useState<User | null>(null);
   const [ratings, setRatings] = useState<Rating[]>([]);
@@ -74,7 +75,7 @@ export default function UserProfileScreen() {
     try {
       const [userData, ratingsResult, stats, counts] = await Promise.all([
         getUserById(id),
-        getUserRatings(id, 'created_at', 'desc'),
+        getUserRatings(id, 'watched_at', 'desc'),
         getUserTasteStats(id),
         getFollowCounts(id),
       ]);
@@ -130,6 +131,58 @@ export default function UserProfileScreen() {
     setFollowLoading(false);
   };
 
+  const handleBlockUser = () => {
+    if (!currentUser || !id || isOwnProfile) return;
+
+    Alert.alert(
+      'Block User',
+      `Block ${user?.display_name}? They won't be able to see your content, and their content will be hidden from your feed. You will also unfollow each other.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await blockUser(currentUser.id, id);
+            if (error) {
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            } else {
+              setIsFollowingUser(false);
+              Alert.alert('User Blocked', `${user?.display_name} has been blocked.`);
+              router.back();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReportUser = () => {
+    if (!currentUser || !id) return;
+
+    Alert.alert(
+      'Report User',
+      'Why are you reporting this user?',
+      [
+        { text: 'Spam', onPress: () => submitUserReport('Spam') },
+        { text: 'Harassment', onPress: () => submitUserReport('Harassment') },
+        { text: 'Inappropriate Content', onPress: () => submitUserReport('Inappropriate content') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const submitUserReport = async (reason: string) => {
+    if (!currentUser || !id) return;
+
+    const { error } = await reportContent(currentUser.id, reason, { userId: id });
+    if (error) {
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } else {
+      Alert.alert('Report Submitted', 'Thank you for reporting. We will review this within 24 hours.');
+    }
+  };
+
   // Get top genre for avatar ring color
   const topGenre = tasteStats?.topGenres?.[0]?.genre;
 
@@ -156,8 +209,12 @@ export default function UserProfileScreen() {
     } else if (sortBy === 'lowest') {
       filtered.sort((a, b) => a.score - b.score);
     } else {
-      // recent - sort by created_at descending
-      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // recent - sort by watched_at descending (when the movie was actually seen)
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.watched_at || a.created_at).getTime();
+        const dateB = new Date(b.watched_at || b.created_at).getTime();
+        return dateB - dateA;
+      });
     }
 
     return filtered;
@@ -295,7 +352,11 @@ export default function UserProfileScreen() {
           </View>
 
           {/* Top Performer */}
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => topPerformer && router.push(`/person/${topPerformer.id}`)}
+            disabled={!topPerformer}
+          >
             {topPerformer?.profile_path ? (
               <Image
                 source={{ uri: getImageUrl(topPerformer.profile_path, 'w92') || '' }}
@@ -312,7 +373,7 @@ export default function UserProfileScreen() {
                 {topPerformer?.name || '—'}
               </Text>
             </View>
-          </View>
+          </Pressable>
         </View>
       </View>
     );
@@ -680,7 +741,7 @@ export default function UserProfileScreen() {
               contentContainerStyle={styles.peopleScroll}
             >
               {tasteStats.topActors.map((actor) => (
-                <View key={actor.id} style={styles.personCard}>
+                <Pressable key={actor.id} style={styles.personCard} onPress={() => router.push(`/person/${actor.id}`)}>
                   <Avatar
                     uri={actor.profile_path ? getImageUrl(actor.profile_path, 'w185') : null}
                     name={actor.name}
@@ -692,7 +753,7 @@ export default function UserProfileScreen() {
                   <Text style={[styles.personScore, { color: getScoreColor(actor.avgScore) }]}>
                     {actor.avgScore}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -710,7 +771,7 @@ export default function UserProfileScreen() {
               contentContainerStyle={styles.peopleScroll}
             >
               {tasteStats.topDirectors.map((director) => (
-                <View key={director.id} style={styles.personCard}>
+                <Pressable key={director.id} style={styles.personCard} onPress={() => router.push(`/person/${director.id}`)}>
                   <Avatar
                     uri={director.profile_path ? getImageUrl(director.profile_path, 'w185') : null}
                     name={director.name}
@@ -722,7 +783,7 @@ export default function UserProfileScreen() {
                   <Text style={[styles.personScore, { color: getScoreColor(director.avgScore) }]}>
                     {director.avgScore}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -746,6 +807,26 @@ export default function UserProfileScreen() {
           headerTitle: user.display_name,
           headerStyle: { backgroundColor: colors.background },
           headerTintColor: colors.text,
+          headerRight: !isOwnProfile && currentUser
+            ? () => (
+                <Pressable
+                  onPress={() => {
+                    Alert.alert(
+                      'Options',
+                      '',
+                      [
+                        { text: 'Report User', onPress: handleReportUser },
+                        { text: 'Block User', style: 'destructive', onPress: handleBlockUser },
+                        { text: 'Cancel', style: 'cancel' },
+                      ]
+                    );
+                  }}
+                  style={styles.headerMenuButton}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={24} color={colors.text} />
+                </Pressable>
+              )
+            : undefined,
         }}
       />
 
@@ -774,6 +855,10 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 120,
+  },
+  headerMenuButton: {
+    padding: spacing.sm,
+    marginRight: spacing.xs,
   },
   errorText: {
     fontSize: 15,

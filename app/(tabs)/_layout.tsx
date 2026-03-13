@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { Tabs, useRouter } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../src/constants/theme';
 import { FloatingActionButton } from '../../src/components';
+import { useAuth } from '../../src/hooks/useAuth';
+import { useNotifications } from '../../src/hooks/useNotifications';
 
 type IconName = 'person' | 'person-outline' | 'people' | 'people-outline' | 'compass' | 'compass-outline';
 
@@ -23,8 +26,52 @@ function TabIcon({ name, focused }: TabIconProps) {
   );
 }
 
+function NotificationBell({ unreadCount }: { unreadCount: number }) {
+  const router = useRouter();
+
+  return (
+    <Pressable
+      onPress={() => router.push('/notifications')}
+      style={styles.bellButton}
+    >
+      <Ionicons
+        name={unreadCount > 0 ? 'notifications' : 'notifications-outline'}
+        size={22}
+        color={unreadCount > 0 ? colors.primary : colors.textSecondary}
+      />
+      {unreadCount > 0 && (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 export default function TabLayout() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { unreadCount, getUnreadCount, subscribeToNotifications, unsubscribe } = useNotifications();
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Fetch initial unread count
+    getUnreadCount(user.id);
+
+    // Subscribe to real-time notification updates
+    const cleanup = subscribeToNotifications(user.id);
+
+    return () => {
+      cleanup();
+    };
+  }, [user?.id]);
+
+  const headerRight = user
+    ? () => <NotificationBell unreadCount={unreadCount} />
+    : undefined;
 
   return (
     <>
@@ -35,15 +82,11 @@ export default function TabLayout() {
           backgroundColor: colors.background,
         },
         headerTintColor: colors.text,
+        headerRight,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: 'rgba(21, 21, 24, 0.95)',
-          borderTopColor: colors.border,
-          borderTopWidth: 0.5,
-          height: 85,
-          paddingTop: 8,
+          display: 'none',
         },
       }}
     >
@@ -108,5 +151,29 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 20,
     bottom: 100,
+  },
+  bellButton: {
+    padding: 8,
+    marginRight: 8,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colors.background,
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.background,
   },
 });

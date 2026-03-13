@@ -20,7 +20,7 @@ import { Input, Button, Avatar } from '../../src/components';
 export default function EditProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user, updateProfile, signOut } = useAuth();
+  const { user, updateProfile, signOut, deleteAccount } = useAuth();
 
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [bio, setBio] = useState(user?.bio || '');
@@ -132,6 +132,41 @@ export default function EditProfileScreen() {
     );
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This will permanently delete your account, all your ratings, reviews, comments, and followers. This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete My Account',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Are you absolutely sure?',
+              'All your data will be permanently removed.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Yes, Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                    const { error } = await deleteAccount();
+                    if (error) {
+                      Alert.alert('Error', 'Failed to delete account. Please try again or contact support.');
+                    } else {
+                      router.replace('/(tabs)');
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -211,6 +246,19 @@ export default function EditProfileScreen() {
             variant="ghost"
             textStyle={styles.signOutText}
           />
+        </View>
+
+        {/* Delete Account */}
+        <View style={styles.deleteSection}>
+          <Button
+            title="Delete Account"
+            onPress={handleDeleteAccount}
+            variant="ghost"
+            textStyle={styles.deleteText}
+          />
+          <Text style={styles.deleteHint}>
+            Permanently removes your account and all data
+          </Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -311,5 +359,20 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: colors.error,
+  },
+  deleteSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    alignItems: 'center',
+  },
+  deleteText: {
+    color: colors.error,
+  },
+  deleteHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
   },
 });

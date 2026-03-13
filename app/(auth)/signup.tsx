@@ -25,6 +25,7 @@ export default function SignUpScreen() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errors, setErrors] = useState<{
     email?: string;
     password?: string;
@@ -73,8 +74,8 @@ export default function SignUpScreen() {
     if (error) {
       Alert.alert('Sign Up Failed', error.message);
     } else {
-      // User is automatically signed in since email confirmation is disabled
-      router.replace('/(tabs)');
+      // User is automatically signed in — send to onboarding to build taste profile
+      router.replace('/onboarding?fromSignup=1');
     }
   };
 
@@ -140,10 +141,42 @@ export default function SignUpScreen() {
             error={errors.password}
           />
 
+          <Pressable
+            style={styles.termsRow}
+            onPress={() => setAgreedToTerms(!agreedToTerms)}
+          >
+            <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+              {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.termsText}>
+              I agree to the{' '}
+              <Text
+                style={styles.termsLink}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push('/terms');
+                }}
+              >
+                Terms of Use
+              </Text>
+              {' '}and{' '}
+              <Text
+                style={styles.termsLink}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push('/privacy');
+                }}
+              >
+                Privacy Policy
+              </Text>
+            </Text>
+          </Pressable>
+
           <Button
             title="Create Account"
             onPress={handleSignUp}
             loading={loading}
+            disabled={!agreedToTerms}
             style={styles.submitButton}
           />
         </View>
@@ -195,6 +228,42 @@ const styles = StyleSheet.create({
   },
   form: {
     marginBottom: spacing.xl,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  checkmark: {
+    color: colors.background,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   submitButton: {
     marginTop: spacing.md,

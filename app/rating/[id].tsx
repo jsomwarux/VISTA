@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,8 @@ import {
   AnimatedPressable,
 } from '../../src/components';
 import { Rating, Comment } from '../../src/types';
+import { shareRating } from '../../src/lib/share';
+import { RatingShareCard } from '../../src/components/ShareCards';
 
 export default function RatingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -34,7 +36,7 @@ export default function RatingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { getRatingWithDetails, deleteRating } = useRatings();
-  const { getComments, addComment, likeRating, unlikeRating } = useSocial();
+  const { getComments, addComment, likeRating, unlikeRating, likeComment, unlikeComment, reportContent } = useSocial();
 
   const [rating, setRating] = useState<Rating | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -44,6 +46,7 @@ export default function RatingDetailScreen() {
   const [hasLiked, setHasLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const ratingCardRef = useRef<View>(null);
 
   useEffect(() => {
     const loadRating = async () => {
@@ -52,7 +55,7 @@ export default function RatingDetailScreen() {
       try {
         const [ratingResult, commentsResult] = await Promise.all([
           getRatingWithDetails(id),
-          getComments(id),
+          getComments(id, user?.id),
         ]);
 
         if (ratingResult.data) {
@@ -95,9 +98,47 @@ export default function RatingDetailScreen() {
     setSubmitting(false);
 
     if (data) {
-      setComments(prev => [...prev, data]);
+      setComments(prev => [...prev, { ...data, likes_count: 0, has_liked: false }]);
       setNewComment('');
     }
+  };
+
+  const handleCommentLike = async (commentId: string) => {
+    if (!user) return;
+
+    const comment = comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    if (comment.has_liked) {
+      // Optimistic update
+      setComments(prev =>
+        resortComments(prev.map(c =>
+          c.id === commentId
+            ? { ...c, has_liked: false, likes_count: (c.likes_count || 1) - 1 }
+            : c
+        ))
+      );
+      await unlikeComment(commentId, user.id);
+    } else {
+      // Optimistic update
+      setComments(prev =>
+        resortComments(prev.map(c =>
+          c.id === commentId
+            ? { ...c, has_liked: true, likes_count: (c.likes_count || 0) + 1 }
+            : c
+        ))
+      );
+      await likeComment(commentId, user.id);
+    }
+  };
+
+  // Re-sort comments: most liked first, then chronological for ties
+  const resortComments = (list: Comment[]): Comment[] => {
+    return [...list].sort((a, b) => {
+      const likeDiff = (b.likes_count || 0) - (a.likes_count || 0);
+      if (likeDiff !== 0) return likeDiff;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
   };
 
   const handleMenuPress = () => {
@@ -142,6 +183,45 @@ export default function RatingDetailScreen() {
     );
   };
 
+  const handleReport = () => {
+    if (!user || !rating) return;
+
+    Alert.alert(
+      'Report Content',
+      'Why are you reporting this?',
+      [
+        {
+          text: 'Spam',
+          onPress: () => submitReport('Spam'),
+        },
+        {
+          text: 'Harassment',
+          onPress: () => submitReport('Harassment'),
+        },
+        {
+          text: 'Inappropriate Content',
+          onPress: () => submitReport('Inappropriate content'),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const submitReport = async (reason: string) => {
+    if (!user || !rating) return;
+
+    const { error } = await reportContent(user.id, reason, {
+      ratingId: rating.id,
+      userId: rating.user_id,
+    });
+
+    if (error) {
+      Alert.alert('Error', 'Failed to submit report. Please try again.');
+    } else {
+      Alert.alert('Report Submitted', 'Thank you for reporting. We will review this content within 24 hours.');
+    }
+  };
+
   const getTimeAgo = (date: Date): string => {
     const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
 
@@ -171,6 +251,11 @@ export default function RatingDetailScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/* Hidden share card — positioned off-screen for view-shot capture */}
+      <View style={styles.shareCardHidden} pointerEvents="none">
+        <RatingShareCard ref={ratingCardRef} rating={rating} />
+      </View>
+
       <Stack.Screen
         options={{
           headerTitle: '',
@@ -229,10 +314,17 @@ export default function RatingDetailScreen() {
             <ScoreBadge score={rating.score} size="large" showGlow />
           </View>
 
-          {/* Review in quotes */}
+          {/* Review / Caption */}
           {rating.review && (
             <View style={styles.reviewContainer}>
-              <Text style={styles.reviewQuote}>"{rating.review}"</Text>
+              <View style={styles.reviewLabelRow}>
+                <Ionicons name="document-text-outline" size={12} color={colors.textMuted} />
+                <Text style={styles.reviewLabel}>REVIEW</Text>
+              </View>
+              <View style={styles.reviewCaptionBlock}>
+                <View style={styles.reviewAccent} />
+                <Text style={styles.reviewQuote}>{rating.review}</Text>
+              </View>
             </View>
           )}
 
@@ -254,9 +346,15 @@ export default function RatingDetailScreen() {
               <Text style={styles.actionCount}>{comments.length}</Text>
             </View>
 
-            <Pressable style={styles.actionButton}>
+            <Pressable style={styles.actionButton} onPress={() => rating && shareRating(rating, ratingCardRef)}>
               <Ionicons name="share-outline" size={20} color={colors.textMuted} />
             </Pressable>
+
+            {user && !isOwnRating && (
+              <Pressable style={styles.actionButton} onPress={handleReport}>
+                <Ionicons name="flag-outline" size={20} color={colors.textMuted} />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -297,6 +395,28 @@ export default function RatingDetailScreen() {
                   </View>
                 </Pressable>
                 <Text style={styles.commentText}>{comment.content}</Text>
+                {user && (
+                  <View style={styles.commentActions}>
+                    <Pressable
+                      style={styles.commentLikeButton}
+                      onPress={() => handleCommentLike(comment.id)}
+                    >
+                      <Ionicons
+                        name={comment.has_liked ? 'heart' : 'heart-outline'}
+                        size={16}
+                        color={comment.has_liked ? colors.coral : colors.textMuted}
+                      />
+                      {(comment.likes_count ?? 0) > 0 && (
+                        <Text style={[
+                          styles.commentLikeCount,
+                          comment.has_liked && styles.commentLikeCountActive,
+                        ]}>
+                          {comment.likes_count}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ))
           )}
@@ -353,6 +473,12 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  shareCardHidden: {
+    position: 'absolute',
+    left: -9999,
+    top: 0,
+    opacity: 1,
   },
   menuButton: {
     padding: spacing.sm,
@@ -438,14 +564,36 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Review
+  // Review / Caption
   reviewContainer: {
     marginTop: spacing.md,
     paddingTop: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+  reviewLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  reviewLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 1,
+  },
+  reviewCaptionBlock: {
+    flexDirection: 'row',
+  },
+  reviewAccent: {
+    width: 3,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+    marginRight: spacing.md,
+  },
   reviewQuote: {
+    flex: 1,
     fontSize: 16,
     color: colors.textSecondary,
     fontStyle: 'italic',
@@ -545,6 +693,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  commentLikeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 2,
+    paddingRight: spacing.md,
+  },
+  commentLikeCount: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginLeft: spacing.xs,
+    fontWeight: '500',
+  },
+  commentLikeCountActive: {
+    color: colors.coral,
   },
 
   // Comment Input

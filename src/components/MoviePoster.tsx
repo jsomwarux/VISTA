@@ -5,19 +5,20 @@ import { getImageUrl } from '../lib/tmdb';
 
 interface MoviePosterProps {
   posterPath: string | null;
-  size?: 'small' | 'medium' | 'large';
+  size?: 'tiny' | 'small' | 'medium' | 'large';
   onPress?: () => void;
   style?: ViewStyle;
 }
 
 export function MoviePoster({ posterPath, size = 'medium', onPress, style }: MoviePosterProps) {
   const sizeStyles = {
+    tiny: { width: 40, height: 60 },
     small: { width: 60, height: 90 },
     medium: { width: 100, height: 150 },
     large: { width: 140, height: 210 },
   };
 
-  const imageSize = size === 'small' ? 'w154' : size === 'medium' ? 'w342' : 'w500';
+  const imageSize = size === 'tiny' || size === 'small' ? 'w154' : size === 'medium' ? 'w342' : 'w500';
   const imageUrl = getImageUrl(posterPath, imageSize);
 
   const { width, height } = sizeStyles[size];

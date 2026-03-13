@@ -6,7 +6,6 @@ import {
   Image,
   ScrollView,
   Pressable,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, borderRadius } from '../constants/theme';
@@ -19,8 +18,31 @@ interface WatchProvidersProps {
   releaseDate?: string;
 }
 
-export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loading, releaseDate }) => {
+// Filter out providers that reference third-party platform stores (e.g. Google Play)
+// to comply with Apple App Store Guideline 2.3.10
+const BLOCKED_PROVIDER_NAMES = ['google play'];
+
+const filterProviders = (list?: WatchProvider[]): WatchProvider[] | undefined => {
+  if (!list) return undefined;
+  const filtered = list.filter(
+    (p) => !BLOCKED_PROVIDER_NAMES.some((name) => p.provider_name.toLowerCase().includes(name))
+  );
+  return filtered.length > 0 ? filtered : undefined;
+};
+
+export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers: rawProviders, loading, releaseDate }) => {
   const [expanded, setExpanded] = useState(false);
+
+  // Apply provider filtering before any logic
+  const providers = rawProviders
+    ? {
+        ...rawProviders,
+        flatrate: filterProviders(rawProviders.flatrate),
+        free: filterProviders(rawProviders.free),
+        rent: filterProviders(rawProviders.rent),
+        buy: filterProviders(rawProviders.buy),
+      }
+    : null;
 
   if (loading) {
     return (
@@ -58,12 +80,6 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
     return null;
   }
 
-  const handleOpenLink = () => {
-    if (providers?.link) {
-      Linking.openURL(providers.link);
-    }
-  };
-
   const renderProviderRow = (providerList: WatchProvider[], label: string) => {
     if (!providerList || providerList.length === 0) return null;
 
@@ -78,10 +94,9 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
           {providerList
             .sort((a, b) => a.display_priority - b.display_priority)
             .map((provider) => (
-              <Pressable
+              <View
                 key={provider.provider_id}
                 style={styles.providerItem}
-                onPress={handleOpenLink}
               >
                 <Image
                   source={{ uri: getImageUrl(provider.logo_path, 'w92') || '' }}
@@ -90,7 +105,7 @@ export const WatchProviders: React.FC<WatchProvidersProps> = ({ providers, loadi
                 <Text style={styles.providerName} numberOfLines={1}>
                   {provider.provider_name}
                 </Text>
-              </Pressable>
+              </View>
             ))}
         </ScrollView>
       </View>

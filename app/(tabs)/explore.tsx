@@ -8,9 +8,8 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
-  Dimensions,
   ImageBackground,
-  Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,14 +19,25 @@ import { getTrendingMovies, searchMovies, getNowPlayingMovies, getImageUrl } fro
 import { MoviePoster, LoadingSpinner } from '../../src/components';
 import { Movie } from '../../src/types';
 import { dataCache } from '../../src/lib/cache';
+import { tabEvents } from '../../src/lib/tabEvents';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_HEIGHT = 280;
 
 export default function ExploreTab() {
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
   const heroScrollRef = useRef<FlatList>(null);
   const heroIndex = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const searchListRef = useRef<FlatList>(null);
+
+  // Scroll to top when tab is re-tapped
+  useEffect(() => {
+    return tabEvents.on('scrollToTop:explore', () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      searchListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  }, []);
 
   const [trendingMovies, setTrendingMovies] = useState<Movie[]>([]);
   const [nowPlayingMovies, setNowPlayingMovies] = useState<Movie[]>([]);
@@ -57,12 +67,14 @@ export default function ExploreTab() {
         getTrendingMovies('week'),
         getNowPlayingMovies(),
       ]);
-      setTrendingMovies(trending);
-      setNowPlayingMovies(nowPlaying.results);
+      const trendingResults = trending || [];
+      const nowPlayingResults = nowPlaying?.results || [];
+      setTrendingMovies(trendingResults);
+      setNowPlayingMovies(nowPlayingResults);
 
       // Cache the results
-      dataCache.set('trending_movies', trending);
-      dataCache.set('now_playing_movies', nowPlaying.results);
+      dataCache.set('trending_movies', trendingResults);
+      dataCache.set('now_playing_movies', nowPlayingResults);
     } catch (error) {
       console.error('Error loading movies:', error);
     }
@@ -78,11 +90,17 @@ export default function ExploreTab() {
     if (trendingMovies.length === 0) return;
 
     const timer = setInterval(() => {
-      heroIndex.current = (heroIndex.current + 1) % Math.min(trendingMovies.length, 5);
-      heroScrollRef.current?.scrollToIndex({
-        index: heroIndex.current,
-        animated: true,
-      });
+      const maxIndex = Math.min(trendingMovies.length, 5) - 1;
+      if (maxIndex < 0) return;
+      heroIndex.current = (heroIndex.current + 1) % (maxIndex + 1);
+      try {
+        heroScrollRef.current?.scrollToIndex({
+          index: heroIndex.current,
+          animated: true,
+        });
+      } catch {
+        // scrollToIndex can fail if layout hasn't completed (e.g., iPad rotation)
+      }
     }, 5000);
 
     return () => clearInterval(timer);
@@ -128,12 +146,15 @@ export default function ExploreTab() {
           data={heroMovies}
           keyExtractor={(item) => `hero-${item.id}`}
           showsHorizontalScrollIndicator={false}
+          onScrollToIndexFailed={() => {
+            // Gracefully handle failed scrollToIndex (can happen on iPad rotation)
+          }}
           onMomentumScrollEnd={(e) => {
-            heroIndex.current = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+            heroIndex.current = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
           }}
           renderItem={({ item }) => (
             <Pressable
-              style={styles.heroItem}
+              style={[styles.heroItem, { width: screenWidth }]}
               onPress={() => router.push(`/movie/${item.id}`)}
             >
               <ImageBackground
@@ -244,6 +265,7 @@ export default function ExploreTab() {
 
     return (
       <FlatList
+        ref={searchListRef}
         data={searchResults}
         keyExtractor={(item) => `search-${item.id}`}
         numColumns={3}
@@ -303,6 +325,7 @@ export default function ExploreTab() {
         renderSearchResults()
       ) : (
         <ScrollView
+          ref={scrollRef}
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -369,7 +392,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   heroItem: {
-    width: SCREEN_WIDTH,
     height: HERO_HEIGHT,
   },
   heroImage: {

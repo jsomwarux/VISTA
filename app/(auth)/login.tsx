@@ -46,13 +46,26 @@ export default function LoginScreen() {
     if (!validate()) return;
 
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
+    try {
+      const { error } = await signIn(email, password);
 
-    if (error) {
-      Alert.alert('Sign In Failed', error.message);
-    } else {
-      router.replace('/(tabs)');
+      if (error) {
+        // Provide user-friendly error messages instead of raw API errors
+        const message = error.message?.toLowerCase() || '';
+        if (message.includes('invalid login') || message.includes('invalid email') || message.includes('invalid credentials')) {
+          Alert.alert('Sign In Failed', 'Invalid email or password. Please try again.');
+        } else if (message.includes('network') || message.includes('fetch')) {
+          Alert.alert('Connection Error', 'Please check your internet connection and try again.');
+        } else {
+          Alert.alert('Sign In Failed', 'Something went wrong. Please try again.');
+        }
+      } else {
+        router.replace('/(tabs)');
+      }
+    } catch {
+      Alert.alert('Sign In Failed', 'An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 

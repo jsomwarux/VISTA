@@ -28,7 +28,7 @@ export function useWatchlist() {
         .select('id')
         .eq('user_id', userId)
         .eq('movie_id', movieId)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         // Already in watchlist
@@ -81,7 +81,7 @@ export function useWatchlist() {
         .select('id')
         .eq('user_id', userId)
         .eq('movie_id', movieId)
-        .single();
+        .maybeSingle();
 
       return !!data;
     } catch {

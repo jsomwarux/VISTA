@@ -1,6 +1,30 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { User, Comment, Follow } from '../types';
+import { User, Comment, Follow, Report, BlockedUser } from '../types';
+import { filterContent } from '../lib/contentFilter';
+
+// Fire-and-forget notification creation (non-blocking)
+const createNotification = (
+  userId: string,
+  actorId: string,
+  type: 'like' | 'comment' | 'follow',
+  ratingId?: string,
+  commentId?: string,
+) => {
+  if (userId === actorId) return; // Don't notify yourself
+  supabase
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      actor_id: actorId,
+      type,
+      rating_id: ratingId || null,
+      comment_id: commentId || null,
+    })
+    .then(({ error }) => {
+      if (error) console.warn('Failed to create notification:', error.message);
+    });
+};
 
 export function useSocial() {
   const [loading, setLoading] = useState(false);
@@ -16,6 +40,10 @@ export function useSocial() {
         });
 
       if (error) throw error;
+
+      // Notify the followed user
+      createNotification(followingId, followerId, 'follow');
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -116,6 +144,17 @@ export function useSocial() {
         });
 
       if (error) throw error;
+
+      // Look up rating owner and notify them
+      supabase
+        .from('ratings')
+        .select('user_id')
+        .eq('id', ratingId)
+        .single()
+        .then(({ data }) => {
+          if (data) createNotification(data.user_id, userId, 'like', ratingId);
+        });
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
@@ -139,6 +178,11 @@ export function useSocial() {
 
   const addComment = async (ratingId: string, userId: string, content: string) => {
     try {
+      const filterResult = filterContent(content);
+      if (!filterResult.isClean) {
+        return { data: null, error: new Error(filterResult.reason) };
+      }
+
       const { data, error } = await supabase
         .from('comments')
         .insert({
@@ -153,27 +197,105 @@ export function useSocial() {
         .single();
 
       if (error) throw error;
+
+      // Look up rating owner and notify them
+      if (data) {
+        supabase
+          .from('ratings')
+          .select('user_id')
+          .eq('id', ratingId)
+          .single()
+          .then(({ data: ratingData }) => {
+            if (ratingData) {
+              createNotification(ratingData.user_id, userId, 'comment', ratingId, data.id);
+            }
+          });
+      }
+
       return { data: data as Comment, error: null };
     } catch (error) {
       return { data: null, error: error as Error };
     }
   };
 
-  const getComments = async (ratingId: string) => {
+  const getComments = async (ratingId: string, currentUserId?: string) => {
     try {
       const { data, error } = await supabase
         .from('comments')
         .select(`
           *,
-          user:users(*)
+          user:users(*),
+          comment_likes(count)
         `)
         .eq('rating_id', ratingId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      return { data: data as Comment[], error: null };
+
+      // Enrich with likes_count and has_liked
+      let comments = (data || []).map((c: any) => ({
+        ...c,
+        likes_count: c.comment_likes?.[0]?.count ?? 0,
+        comment_likes: undefined, // strip raw join
+      })) as Comment[];
+
+      // If we have a current user, check which comments they've liked
+      if (currentUserId && comments.length > 0) {
+        const commentIds = comments.map(c => c.id);
+        const { data: likedData } = await supabase
+          .from('comment_likes')
+          .select('comment_id')
+          .eq('user_id', currentUserId)
+          .in('comment_id', commentIds);
+
+        const likedSet = new Set(likedData?.map(l => l.comment_id) || []);
+        comments = comments.map(c => ({
+          ...c,
+          has_liked: likedSet.has(c.id),
+        }));
+      }
+
+      // Sort: most liked first, then by created_at for ties
+      comments.sort((a, b) => {
+        const likeDiff = (b.likes_count || 0) - (a.likes_count || 0);
+        if (likeDiff !== 0) return likeDiff;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
+      return { data: comments, error: null };
     } catch (error) {
       return { data: null, error: error as Error };
+    }
+  };
+
+  const likeComment = async (commentId: string, userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('comment_likes')
+        .insert({
+          comment_id: commentId,
+          user_id: userId,
+        });
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
+  const unlikeComment = async (commentId: string, userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('comment_likes')
+        .delete()
+        .eq('comment_id', commentId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
     }
   };
 
@@ -224,6 +346,109 @@ export function useSocial() {
     }
   };
 
+  const blockUser = async (blockerId: string, blockedId: string) => {
+    try {
+      // Insert block record
+      const { error: blockError } = await supabase
+        .from('blocked_users')
+        .insert({
+          blocker_id: blockerId,
+          blocked_id: blockedId,
+        });
+
+      if (blockError) throw blockError;
+
+      // Unfollow in both directions
+      await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', blockerId)
+        .eq('following_id', blockedId);
+
+      await supabase
+        .from('follows')
+        .delete()
+        .eq('follower_id', blockedId)
+        .eq('following_id', blockerId);
+
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
+  const unblockUser = async (blockerId: string, blockedId: string) => {
+    try {
+      const { error } = await supabase
+        .from('blocked_users')
+        .delete()
+        .eq('blocker_id', blockerId)
+        .eq('blocked_id', blockedId);
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
+  const isBlocked = async (blockerId: string, blockedId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('blocked_users')
+        .select('id')
+        .eq('blocker_id', blockerId)
+        .eq('blocked_id', blockedId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return { isBlocked: !!data, error: null };
+    } catch (error) {
+      return { isBlocked: false, error: error as Error };
+    }
+  };
+
+  const getBlockedUsers = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('blocked_users')
+        .select('blocked_id')
+        .eq('blocker_id', userId);
+
+      if (error) throw error;
+      return { data: data?.map(d => d.blocked_id) || [], error: null };
+    } catch (error) {
+      return { data: [], error: error as Error };
+    }
+  };
+
+  const reportContent = async (
+    reporterId: string,
+    reason: string,
+    options: {
+      userId?: string;
+      ratingId?: string;
+      commentId?: string;
+    }
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          reporter_id: reporterId,
+          reported_user_id: options.userId || null,
+          reported_rating_id: options.ratingId || null,
+          reported_comment_id: options.commentId || null,
+          reason,
+        });
+
+      if (error) throw error;
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
   return {
     loading,
     followUser,
@@ -236,8 +461,15 @@ export function useSocial() {
     unlikeRating,
     addComment,
     getComments,
+    likeComment,
+    unlikeComment,
     deleteComment,
     searchUsers,
     getUserById,
+    blockUser,
+    unblockUser,
+    isBlocked,
+    getBlockedUsers,
+    reportContent,
   };
 }

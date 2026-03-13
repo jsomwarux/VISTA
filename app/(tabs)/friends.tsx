@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useSocial } from '../../src/hooks/useSocial';
 import { RatingCard, LoadingSpinner, Avatar, GradientButton } from '../../src/components';
 import { Rating, User } from '../../src/types';
 import { dataCache } from '../../src/lib/cache';
+import { tabEvents } from '../../src/lib/tabEvents';
 
 export default function FriendsTab() {
   const router = useRouter();
@@ -31,6 +32,14 @@ export default function FriendsTab() {
   const [refreshing, setRefreshing] = useState(false);
   const [searching, setSearching] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const feedListRef = useRef<FlatList>(null);
+
+  // Scroll to top when tab is re-tapped
+  useEffect(() => {
+    return tabEvents.on('scrollToTop:friends', () => {
+      feedListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  }, []);
 
   const loadFeed = useCallback(async (forceRefresh = false) => {
     if (!user) return;
@@ -214,6 +223,7 @@ export default function FriendsTab() {
 
     return (
       <FlatList
+        ref={feedListRef}
         data={feedRatings}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.feedList}

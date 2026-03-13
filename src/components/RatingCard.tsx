@@ -67,9 +67,12 @@ export function RatingCard({
           </Pressable>
 
           {rating.review && (
-            <Text style={styles.review} numberOfLines={3}>
-              "{rating.review}"
-            </Text>
+            <View style={styles.reviewCaptionContainer}>
+              <View style={styles.reviewAccent} />
+              <Text style={styles.review} numberOfLines={3}>
+                {rating.review}
+              </Text>
+            </View>
           )}
         </View>
 
@@ -163,11 +166,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  reviewCaptionContainer: {
+    flexDirection: 'row',
+    marginTop: spacing.sm,
+  },
+  reviewAccent: {
+    width: 2.5,
+    backgroundColor: colors.primary,
+    borderRadius: 2,
+    marginRight: spacing.sm,
+  },
   review: {
+    flex: 1,
     fontSize: 13,
     color: colors.textSecondary,
-    marginTop: spacing.sm,
     fontStyle: 'italic',
+    lineHeight: 18,
   },
   actions: {
     flexDirection: 'row',

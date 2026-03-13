@@ -21,3 +21,5 @@ export { AnimatedPressable } from './AnimatedPressable';
 export { AnimatedHeart } from './AnimatedHeart';
 export { TasteMatchBadge } from './TasteMatchBadge';
 export { WatchProviders } from './WatchProviders';
+export { QuickRateCard } from './QuickRateCard';
+export { ProfileShareCard, RatingShareCard } from './ShareCards';

@@ -72,6 +72,15 @@ export interface Comment {
   content: string;
   created_at: string;
   user?: User;
+  likes_count?: number;
+  has_liked?: boolean;
+}
+
+export interface CommentLike {
+  id: string;
+  comment_id: string;
+  user_id: string;
+  created_at: string;
 }
 
 export interface Like {
@@ -126,4 +135,61 @@ export interface WatchProviders {
   buy?: WatchProvider[];
   free?: WatchProvider[];
   link?: string;
+}
+
+export interface Report {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string | null;
+  reported_rating_id: string | null;
+  reported_comment_id: string | null;
+  reason: string;
+  status: string;
+  created_at: string;
+}
+
+export interface BlockedUser {
+  id: string;
+  blocker_id: string;
+  blocked_id: string;
+  created_at: string;
+}
+
+export interface Person {
+  id: number;
+  name: string;
+  biography: string;
+  birthday: string | null;
+  deathday: string | null;
+  place_of_birth: string | null;
+  profile_path: string | null;
+  known_for_department: string;
+  also_known_as: string[];
+  gender: number;
+  popularity: number;
+}
+
+export interface PersonMovieCredit {
+  id: number;
+  title: string;
+  poster_path: string | null;
+  release_date: string;
+  character?: string;
+  job?: string;
+  vote_average: number;
+}
+
+export type NotificationType = 'like' | 'comment' | 'follow';
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  actor_id: string;
+  type: NotificationType;
+  rating_id: string | null;
+  comment_id: string | null;
+  read: boolean;
+  created_at: string;
+  actor?: User;
+  rating?: Rating;
 }

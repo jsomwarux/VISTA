@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { Rating, TasteStats, TasteMatchResult } from '../types';
 import { getMovieDetails, getGenreName } from '../lib/tmdb';
+import { filterContent } from '../lib/contentFilter';
 
 export function useRatings() {
   const [loading, setLoading] = useState(false);
@@ -18,6 +19,14 @@ export function useRatings() {
   ) => {
     try {
       setLoading(true);
+
+      // Filter review content for objectionable material
+      if (review) {
+        const filterResult = filterContent(review);
+        if (!filterResult.isClean) {
+          return { error: new Error(filterResult.reason) };
+        }
+      }
 
       const watchedAtDate = watchedAt || new Date();
 
@@ -95,7 +104,7 @@ export function useRatings() {
     }
   };
 
-  const getUserRatings = async (userId: string, sortBy: string = 'created_at', sortOrder: 'asc' | 'desc' = 'desc') => {
+  const getUserRatings = async (userId: string, sortBy: string = 'watched_at', sortOrder: 'asc' | 'desc' = 'desc') => {
     try {
       setLoading(true);
       const { data, error } = await supabase
@@ -341,11 +350,9 @@ export function useRatings() {
       const actorScores: Record<number, { name: string; total: number; count: number; profile_path: string | null }> = {};
       const directorScores: Record<number, { name: string; total: number; count: number; profile_path: string | null }> = {};
 
-      // Fetch details for top-rated movies to calculate taste stats
-      // Limit to 20 movies and fetch in parallel for performance
-      const ratingsToProcess = ratings.slice(0, 20);
-
-      const movieDetailsPromises = ratingsToProcess.map(async (rating) => {
+      // Fetch details for ALL rated movies to calculate taste stats
+      // Processing everything gives the most accurate picture of taste
+      const movieDetailsPromises = ratings.map(async (rating) => {
         try {
           const movie = await getMovieDetails(rating.movie_id);
           return { rating, movie };
@@ -370,9 +377,9 @@ export function useRatings() {
           }
         }
 
-        // Process cast (top 5 billed)
+        // Process cast — top 3 billed only (lead + main supporting)
         if (movie.credits?.cast) {
-          for (const actor of movie.credits.cast.slice(0, 5)) {
+          for (const actor of movie.credits.cast.slice(0, 3)) {
             if (!actorScores[actor.id]) {
               actorScores[actor.id] = { name: actor.name, total: 0, count: 0, profile_path: actor.profile_path };
             }
@@ -394,17 +401,26 @@ export function useRatings() {
         }
       }
 
-      // Calculate averages and sort
+      // Weighted score: avgScore × min(1, count / threshold)
+      // Rewards entries that appear across many highly-rated films
+      // rather than those in just 2-3 movies that happen to score high.
+      const weighted = (avg: number, count: number, threshold: number) =>
+        avg * Math.min(1, count / threshold);
+
+      // Genres: min 5 movies, weight threshold 8
+      // Higher threshold since we now process all ratings — genres need
+      // significant presence across the library to reach full weight
       const topGenres = Object.entries(genreScores)
         .map(([genre, { total, count }]) => ({
           genre,
           avgScore: Math.round(total / count),
           count,
         }))
-        .filter(g => g.count >= 2)
-        .sort((a, b) => b.avgScore - a.avgScore)
+        .filter(g => g.count >= 5)
+        .sort((a, b) => weighted(b.avgScore, b.count, 8) - weighted(a.avgScore, a.count, 8))
         .slice(0, 5);
 
+      // Actors: min 3 movies, weight threshold 5
       const topActors = Object.entries(actorScores)
         .map(([id, { name, total, count, profile_path }]) => ({
           id: parseInt(id),
@@ -413,10 +429,11 @@ export function useRatings() {
           count,
           profile_path,
         }))
-        .filter(a => a.count >= 2)
-        .sort((a, b) => b.avgScore - a.avgScore)
+        .filter(a => a.count >= 3)
+        .sort((a, b) => weighted(b.avgScore, b.count, 5) - weighted(a.avgScore, a.count, 5))
         .slice(0, 5);
 
+      // Directors: min 2 movies, weight threshold 3
       const topDirectors = Object.entries(directorScores)
         .map(([id, { name, total, count, profile_path }]) => ({
           id: parseInt(id),
@@ -426,7 +443,7 @@ export function useRatings() {
           profile_path,
         }))
         .filter(d => d.count >= 2)
-        .sort((a, b) => b.avgScore - a.avgScore)
+        .sort((a, b) => weighted(b.avgScore, b.count, 3) - weighted(a.avgScore, a.count, 3))
         .slice(0, 5);
 
       return {

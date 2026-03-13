@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -37,6 +37,9 @@ import {
 } from '../../src/components';
 import { Rating, TasteStats } from '../../src/types';
 import { getImageUrl } from '../../src/lib/tmdb';
+import { shareProfile } from '../../src/lib/share';
+import { ProfileShareCard } from '../../src/components/ShareCards';
+import { tabEvents } from '../../src/lib/tabEvents';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -53,6 +56,15 @@ export default function ProfileTab() {
   const [activeTab, setActiveTab] = useState<string>('ratings');
   const [sortBy, setSortBy] = useState<'recent' | 'highest' | 'lowest'>('recent');
   const [filterScore, setFilterScore] = useState<number | null>(null);
+  const profileCardRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Scroll to top when tab is re-tapped
+  useEffect(() => {
+    return tabEvents.on('scrollToTop:index', () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!user) return;
@@ -109,8 +121,12 @@ export default function ProfileTab() {
     } else if (sortBy === 'lowest') {
       filtered.sort((a, b) => a.score - b.score);
     } else {
-      // recent - sort by created_at descending
-      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      // recent - sort by watched_at descending (when the movie was actually seen)
+      filtered.sort((a, b) => {
+        const dateA = new Date(a.watched_at || a.created_at).getTime();
+        const dateB = new Date(b.watched_at || b.created_at).getTime();
+        return dateB - dateA;
+      });
     }
 
     return filtered;
@@ -272,7 +288,11 @@ export default function ProfileTab() {
           </View>
 
           {/* Top Performer */}
-          <View style={styles.statCard}>
+          <Pressable
+            style={styles.statCard}
+            onPress={() => topPerformer && router.push(`/person/${topPerformer.id}`)}
+            disabled={!topPerformer}
+          >
             {topPerformer?.profile_path ? (
               <Image
                 source={{ uri: getImageUrl(topPerformer.profile_path, 'w92') || '' }}
@@ -289,7 +309,7 @@ export default function ProfileTab() {
                 {topPerformer?.name || '—'}
               </Text>
             </View>
-          </View>
+          </Pressable>
         </View>
       </View>
     );
@@ -343,10 +363,23 @@ export default function ProfileTab() {
             >
               <Text style={styles.editButtonText}>Edit Profile</Text>
             </Pressable>
-            <Pressable style={styles.shareButton}>
+            <Pressable
+              style={styles.shareButton}
+              onPress={() => shareProfile(user, tasteStats?.totalRated || ratings.length, tasteStats?.avgScore || '—', profileCardRef)}
+            >
               <Ionicons name="share-outline" size={18} color={colors.textSecondary} />
             </Pressable>
           </View>
+
+          {/* Populate Your Profile button (shows when < 8 ratings) */}
+          {ratings.length < 8 && (
+            <GradientButton
+              title="Populate Your Profile"
+              onPress={() => router.push('/onboarding')}
+              size="small"
+              style={styles.populateButton}
+            />
+          )}
         </View>
       </View>
 
@@ -692,7 +725,7 @@ export default function ProfileTab() {
               contentContainerStyle={styles.peopleScroll}
             >
               {tasteStats.topActors.map((actor) => (
-                <View key={actor.id} style={styles.personCard}>
+                <Pressable key={actor.id} style={styles.personCard} onPress={() => router.push(`/person/${actor.id}`)}>
                   <Avatar
                     uri={actor.profile_path ? getImageUrl(actor.profile_path, 'w185') : null}
                     name={actor.name}
@@ -704,7 +737,7 @@ export default function ProfileTab() {
                   <Text style={[styles.personScore, { color: getScoreColor(actor.avgScore) }]}>
                     {actor.avgScore}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -722,7 +755,7 @@ export default function ProfileTab() {
               contentContainerStyle={styles.peopleScroll}
             >
               {tasteStats.topDirectors.map((director) => (
-                <View key={director.id} style={styles.personCard}>
+                <Pressable key={director.id} style={styles.personCard} onPress={() => router.push(`/person/${director.id}`)}>
                   <Avatar
                     uri={director.profile_path ? getImageUrl(director.profile_path, 'w185') : null}
                     name={director.name}
@@ -734,7 +767,7 @@ export default function ProfileTab() {
                   <Text style={[styles.personScore, { color: getScoreColor(director.avgScore) }]}>
                     {director.avgScore}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
@@ -752,20 +785,34 @@ export default function ProfileTab() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
+    <View style={{ flex: 1 }}>
+      {/* Hidden share card — positioned off-screen for view-shot capture */}
+      <View style={styles.shareCardHidden} pointerEvents="none">
+        <ProfileShareCard
+          ref={profileCardRef}
+          user={user}
+          ratingsCount={tasteStats?.totalRated || ratings.length}
+          avgScore={tasteStats?.avgScore || '\u2014'}
+          tasteStats={tasteStats}
         />
-      }
-    >
-      {renderHeader()}
-      {activeTab === 'ratings' ? renderRatingsGrid() : renderTasteSection()}
-    </ScrollView>
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {renderHeader()}
+        {activeTab === 'ratings' ? renderRatingsGrid() : renderTasteSection()}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -776,6 +823,12 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 120,
+  },
+  shareCardHidden: {
+    position: 'absolute',
+    left: -9999,
+    top: 0,
+    opacity: 1,
   },
   centered: {
     flex: 1,
@@ -916,6 +969,10 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  populateButton: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
   },
 
   // Header Stats Grid (2x2)
