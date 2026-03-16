@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { Rating, TasteStats, TasteMatchResult } from '../types';
+import { Rating, TasteStats, TasteMatchResult, Movie } from '../types';
 import { getMovieDetails, getGenreName } from '../lib/tmdb';
 import { filterContent } from '../lib/contentFilter';
 
@@ -352,16 +352,29 @@ export function useRatings() {
 
       // Fetch details for ALL rated movies to calculate taste stats
       // Processing everything gives the most accurate picture of taste
-      const movieDetailsPromises = ratings.map(async (rating) => {
-        try {
-          const movie = await getMovieDetails(rating.movie_id);
-          return { rating, movie };
-        } catch (e) {
-          return { rating, movie: null };
-        }
-      });
+      // Batch in chunks of 8 to avoid TMDB rate limits (~40 req/10s)
+      const BATCH_SIZE = 8;
+      const movieResults: { rating: Rating; movie: Movie | null }[] = [];
 
-      const movieResults = await Promise.all(movieDetailsPromises);
+      for (let i = 0; i < ratings.length; i += BATCH_SIZE) {
+        const batch = ratings.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (rating) => {
+            try {
+              const movie = await getMovieDetails(rating.movie_id);
+              return { rating, movie };
+            } catch (e) {
+              return { rating, movie: null };
+            }
+          })
+        );
+        movieResults.push(...batchResults);
+
+        // Small delay between batches to respect rate limits
+        if (i + BATCH_SIZE < ratings.length) {
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+      }
 
       for (const { rating, movie } of movieResults) {
         if (!movie) continue;
