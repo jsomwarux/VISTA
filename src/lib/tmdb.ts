@@ -1,7 +1,7 @@
 import { Movie, TMDBSearchResult, Genre, WatchProviders, Person, PersonMovieCredit } from '../types';
 
-const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || '';
-const TMDB_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TMDB_ACCESS_TOKEN || '';
+const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || 'c4c98f08442b06c1f26e6c1332a14218';
+const TMDB_ACCESS_TOKEN = process.env.EXPO_PUBLIC_TMDB_ACCESS_TOKEN || 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjNGM5OGYwODQ0MmIwNmMxZjI2ZTZjMTMzMmExNDIxOCIsIm5iZiI6MTc2ODk5NjE1My4zNDcwMDAxLCJzdWIiOiI2OTcwYmQzOWEyNGM4YzA2YzI4MTNjZjYiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.z7h8WeFJ2efQXDq-l67ECXQJ8xf9kfZuYuEldy99nsA';
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 const headers = {
