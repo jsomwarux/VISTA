@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
-interface WatchlistItem {
+export interface WatchlistItem {
   id: string;
   user_id: string;
   movie_id: number;

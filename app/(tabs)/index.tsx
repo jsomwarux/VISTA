@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Image,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +26,7 @@ import {
 import { useAuth } from '../../src/hooks/useAuth';
 import { useRatings } from '../../src/hooks/useRatings';
 import { useSocial } from '../../src/hooks/useSocial';
+import { useWatchlist, WatchlistItem } from '../../src/hooks/useWatchlist';
 import {
   Avatar,
   MoviePoster,
@@ -48,9 +50,11 @@ export default function ProfileTab() {
   const { user, loading: authLoading, signOut } = useAuth();
   const { getUserRatings, getUserTasteStats } = useRatings();
   const { getFollowCounts } = useSocial();
+  const { getUserWatchlist, removeFromWatchlist } = useWatchlist();
 
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [tasteStats, setTasteStats] = useState<TasteStats | null>(null);
+  const [watchlistItems, setWatchlistItems] = useState<WatchlistItem[]>([]);
   const [followCounts, setFollowCounts] = useState<{ followers: number; following: number }>({ followers: 0, following: 0 });
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('ratings');
@@ -69,16 +73,20 @@ export default function ProfileTab() {
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    // Load ratings and follow counts first (fast queries)
-    const [ratingsResult, countsResult] = await Promise.all([
+    // Load ratings, follow counts, and watchlist first (fast queries)
+    const [ratingsResult, countsResult, watchlistResult] = await Promise.all([
       getUserRatings(user.id),
       getFollowCounts(user.id),
+      getUserWatchlist(user.id),
     ]);
 
     if (ratingsResult.data) {
       setRatings(ratingsResult.data);
     }
     setFollowCounts(countsResult);
+    if (watchlistResult.data) {
+      setWatchlistItems(watchlistResult.data);
+    }
 
     // Load taste stats separately (slower - requires TMDB API calls)
     const statsResult = await getUserTasteStats(user.id);
@@ -397,6 +405,7 @@ export default function ProfileTab() {
           segments={[
             { key: 'ratings', label: 'Ratings', icon: '▦' },
             { key: 'taste', label: 'Taste', icon: '✨' },
+            { key: 'watchlist', label: 'Watchlist', icon: '🔖' },
           ]}
           activeKey={activeTab}
           onChange={setActiveTab}
@@ -784,6 +793,90 @@ export default function ProfileTab() {
     );
   };
 
+  const handleRemoveFromWatchlist = (movieId: number, title: string) => {
+    Alert.alert(
+      'Remove from Watchlist',
+      `Remove "${title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            // Optimistic update
+            const removedItem = watchlistItems.find(item => item.movie_id === movieId);
+            setWatchlistItems(prev => prev.filter(item => item.movie_id !== movieId));
+
+            const { error } = await removeFromWatchlist(user!.id, movieId);
+            if (error) {
+              // Re-add on failure
+              if (removedItem) {
+                setWatchlistItems(prev => [...prev, removedItem].sort(
+                  (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                ));
+              }
+              Alert.alert('Error', 'Failed to remove from watchlist. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderWatchlistSection = () => {
+    if (watchlistItems.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconContainer}>
+            <Ionicons name="bookmark-outline" size={64} color={colors.textMuted} />
+          </View>
+          <Text style={styles.emptyTitle}>Your watchlist is empty</Text>
+          <Text style={styles.emptyMessage}>
+            Save movies you want to watch from any movie page
+          </Text>
+          <GradientButton
+            title="Explore Movies"
+            onPress={() => router.push('/(tabs)/explore')}
+            style={styles.emptyCta}
+          />
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.ratingsContainer}>
+        <View style={styles.ratingsHeader}>
+          <Text style={styles.ratingsCount}>
+            {watchlistItems.length} Movie{watchlistItems.length !== 1 ? 's' : ''} Saved
+          </Text>
+        </View>
+
+        <View style={styles.ratingsGrid}>
+          {watchlistItems.map((item) => (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                styles.ratingItem,
+                pressed && styles.ratingItemPressed,
+              ]}
+              onPress={() => router.push(`/movie/${item.movie_id}`)}
+              onLongPress={() => handleRemoveFromWatchlist(item.movie_id, item.movie_title)}
+            >
+              <View style={styles.posterContainer}>
+                <View style={styles.posterInner}>
+                  <MoviePoster posterPath={item.movie_poster || null} size="small" />
+                </View>
+              </View>
+              <Text style={styles.ratingMovieTitle} numberOfLines={1}>
+                {item.movie_title}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
       {/* Hidden share card — positioned off-screen for view-shot capture */}
@@ -810,7 +903,11 @@ export default function ProfileTab() {
         }
       >
         {renderHeader()}
-        {activeTab === 'ratings' ? renderRatingsGrid() : renderTasteSection()}
+        {activeTab === 'ratings'
+          ? renderRatingsGrid()
+          : activeTab === 'taste'
+            ? renderTasteSection()
+            : renderWatchlistSection()}
       </ScrollView>
     </View>
   );
